@@ -1,29 +1,48 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
 plugins {
     kotlin("jvm") version "1.8.21"
-    application
+    id("maven-publish")
 }
 
-group = "com.github.D10NG"
-version = "1.0-SNAPSHOT"
+group = "com.github.D10NGYANG"
+version = "0.0.1"
 
 repositories {
     mavenCentral()
 }
 
+kotlin {
+    java {
+        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_1_8
+    }
+}
+
 dependencies {
-    testImplementation(kotlin("test"))
+    implementation(kotlin("stdlib"))
+    // 单元测试
+    testImplementation("junit:junit:4.13.2")
 }
 
-tasks.test {
-    useJUnitPlatform()
-}
+val bds100MavenUsername: String by project
+val bds100MavenPassword: String by project
 
-tasks.withType<KotlinCompile> {
-    kotlinOptions.jvmTarget = "1.8"
-}
-
-application {
-    mainClass.set("MainKt")
+publishing {
+    publications {
+        create("release", MavenPublication::class) {
+            artifactId = "DLPcmResampleUtil"
+            from(components.getByName("java"))
+        }
+    }
+    repositories {
+        maven {
+            url = uri("/Users/d10ng/project/kotlin/maven-repo/repository")
+        }
+        maven {
+            credentials {
+                username = bds100MavenUsername
+                password = bds100MavenPassword
+            }
+            setUrl("https://nexus.bds100.com/repository/maven-releases/")
+        }
+    }
 }
