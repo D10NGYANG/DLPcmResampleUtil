@@ -11,10 +11,7 @@ repositories {
 }
 
 kotlin {
-    java {
-        targetCompatibility = JavaVersion.VERSION_1_8
-        sourceCompatibility = JavaVersion.VERSION_1_8
-    }
+    jvmToolchain(8)
 }
 
 dependencies {
