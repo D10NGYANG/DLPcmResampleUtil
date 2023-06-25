@@ -2,14 +2,11 @@ package com.d10ng.pcmresample
 
 import com.d10ng.pcmresample.constant.ChannelType
 import com.d10ng.pcmresample.constant.EncodingType
-import com.d10ng.pcmresample.ssrc.SSRC
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import java.io.FileInputStream
-import java.io.FileOutputStream
+import com.d10ng.pcmresample.ssrc.JavaSSRC
+import java.io.*
+import java.nio.ByteOrder
 
 object DLPcmResampleUtil {
-
     /**
      * 重采样，保持通道数、位深、编码方式不变
      * - 录音文件时长越长，处理越耗时，不要在UI线程进行操作
@@ -19,7 +16,9 @@ object DLPcmResampleUtil {
      * @param targetSampleRate Int 目标采样率
      * @param channelType ChannelType 通道数
      * @param encodingType EncodingType 位深
+     * @throws IOException if there is an error reading or writing the file
      */
+    @Throws(IOException::class)
     fun resample(
         srcPath: String,
         targetPath: String,
@@ -28,9 +27,9 @@ object DLPcmResampleUtil {
         channelType: ChannelType = ChannelType.MONO,
         encodingType: EncodingType = EncodingType.PCM_16BIT
     ) {
-        val fis = FileInputStream(srcPath)
-        val fos = FileOutputStream(targetPath)
-        SSRC(fis, fos, srcSampleRate, targetSampleRate, encodingType.intValue, encodingType.intValue, channelType.intValue, Integer.MAX_VALUE, 0.0, 0, true)
+        val srcData = File(srcPath).readBytes()
+        val targetData = resample(srcData, srcSampleRate, targetSampleRate, channelType, encodingType)
+        File(targetPath).writeBytes(targetData)
     }
 
     /**
@@ -50,9 +49,37 @@ object DLPcmResampleUtil {
         channelType: ChannelType = ChannelType.MONO,
         encodingType: EncodingType = EncodingType.PCM_16BIT
     ): ByteArray {
-        val fis = ByteArrayInputStream(srcData)
-        val fos = ByteArrayOutputStream()
-        SSRC(fis, fos, srcSampleRate, targetSampleRate, encodingType.intValue, encodingType.intValue, channelType.intValue, Integer.MAX_VALUE, 0.0, 0, true)
-        return fos.toByteArray()
+        ByteArrayInputStream(srcData).use { fis ->
+            ByteArrayOutputStream().use { fos ->
+                val ssrc = JavaSSRC().apply {
+                    setSrcChannels(channelType.intValue)
+                    setDstChannels(channelType.intValue)
+                    setMonoChannel(-1)
+                    setSrcByteOrder(ByteOrder.LITTLE_ENDIAN)
+                    setSrcBPS(encodingType.intValue * 8)
+                    setDstBPS(encodingType.intValue * 8)
+                    setSrcSamplingRate(srcSampleRate)
+                    setDstSamplingRate(targetSampleRate)
+                }
+                ssrc.initialize()
+                var readLen: Int
+                val buffer = ByteArray(4096)
+                while (true) {
+                    readLen = fis.read(buffer)
+                    if (readLen < 0) {
+                        readLen = ssrc.resample(buffer, 0, 0, true)
+                        if (readLen > 0) {
+                            fos.write(ssrc.outBytes, 0, readLen)
+                        }
+                        break
+                    }
+                    readLen = ssrc.resample(buffer, 0, readLen, false)
+                    if (readLen > 0) {
+                        fos.write(ssrc.outBytes, 0, readLen)
+                    }
+                }
+                return fos.toByteArray()
+            }
+        }
     }
 }

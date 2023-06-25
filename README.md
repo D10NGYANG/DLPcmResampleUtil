@@ -3,10 +3,11 @@ PCM文件调整采样率，Java库
 
 ## 参考
 - [hutm/JSSRC](https://github.com/hutm/JSSRC)
+- [waynetam/JavaSSRC](https://github.com/waynetam/JavaSSRC)
 - [ideastudios/AndroidPcmResample](https://github.com/ideastudios/AndroidPcmResample)
 
 ## 版本
-version = `0.0.4`
+version = `0.0.5`
 
 ## 使用说明
 ### 1、添加仓库

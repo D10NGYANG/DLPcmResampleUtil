@@ -38,6 +38,8 @@ class Test {
         val channelType = ChannelType.MONO
         val encodingType = EncodingType.PCM_16BIT
         val targetData = DLPcmResampleUtil.resample(srcData, srcSampleRate, targetSampleRate, channelType, encodingType)
+        // 写入文件
+        //File("./48to8.pcm").writeBytes(targetData)
         // 获取resource目录下的目标文件数据
         val oriData = javaClass.classLoader.getResource("48to8.pcm")!!.readBytes()
         assert(targetData.contentEquals(oriData))
