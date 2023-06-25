@@ -6,7 +6,7 @@ PCM文件调整采样率，Java库
 - [ideastudios/AndroidPcmResample](https://github.com/ideastudios/AndroidPcmResample)
 
 ## 版本
-version = `0.0.1`
+version = `0.0.2`
 
 ## 使用说明
 ### 1、添加仓库
@@ -23,6 +23,7 @@ implementation 'com.github.D10NGYANG:DLPcmResampleUtil:$version'
 -dontwarn com.d10ng.pcmresample.**
 ```
 ### 4、使用
+#### 对文件进行重采样
 ```kotlin
 /**
  * 重采样，保持通道数、位深、编码方式不变
@@ -43,15 +44,28 @@ fun resample(
     encodingType: EncodingType = EncodingType.PCM_16BIT
 )
 ```
+#### 对字节数据进行重采样
 ```kotlin
-val srcPath = "./ori48.pcm"
-val targetPath = "./48to8.pcm"
-val srcSampleRate = 48000
-val targetSampleRate = 8000
-val channelType = ChannelType.MONO
-val encodingType = EncodingType.PCM_16BIT
-DLPcmResampleUtil.resample(srcPath, targetPath, srcSampleRate, targetSampleRate, channelType, encodingType)
+/**
+ * 重采样，保持通道数、位深、编码方式不变
+ * - 录音文件时长越长，处理越耗时，不要在UI线程进行操作
+ * @param srcData ByteArray 源文件数据
+ * @param srcSampleRate Int 源采样率
+ * @param targetSampleRate Int 目标采样率
+ * @param channelType ChannelType 通道数
+ * @param encodingType EncodingType 位深
+ * @return ByteArray 重采样后的数据
+ */
+fun resample(
+    srcData: ByteArray,
+    srcSampleRate: Int,
+    targetSampleRate: Int,
+    channelType: ChannelType = ChannelType.MONO,
+    encodingType: EncodingType = EncodingType.PCM_16BIT
+): ByteArray
 ```
+### 5、示例
+> 参考 `Test` 文件：[Test.kt](src/test/java/Test.kt)；
 
 ## 后续计划
 > 暂无
