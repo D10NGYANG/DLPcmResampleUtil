@@ -42,4 +42,19 @@ class Test {
         val oriData = javaClass.classLoader.getResource("48to8.pcm")!!.readBytes()
         assert(targetData.contentEquals(oriData))
     }
+
+    /**
+     * 循环测试数据重采样，测试内存泄露问题
+     */
+    @Test
+    fun testByteArrayLoop() {
+        val srcData = javaClass.classLoader.getResource("ori48.pcm")!!.readBytes()
+        val srcSampleRate = 48000
+        val targetSampleRate = 8000
+        val channelType = ChannelType.MONO
+        val encodingType = EncodingType.PCM_16BIT
+        for (i in 0..3000) {
+            DLPcmResampleUtil.resample(srcData, srcSampleRate, targetSampleRate, channelType, encodingType)
+        }
+    }
 }

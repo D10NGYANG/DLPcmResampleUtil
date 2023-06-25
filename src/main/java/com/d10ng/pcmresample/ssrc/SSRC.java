@@ -1272,15 +1272,8 @@ public class SSRC {
                     toberead = chanklen - sumread;
                 }
 
-                int limit = bps * nch * toberead;
-                if (limit > rawinbuf.capacity()) {
-                    rawinbuf.clear();
-                    rawinbuf = ByteBuffer.allocate(limit);
-                }
                 rawinbuf.position(0);
-                rawinbuf.limit(limit);
-                //rawinbuf.position(0);
-                //rawinbuf.limit(bps * nch * toberead);
+                rawinbuf.limit(bps * nch * toberead);
 
                 byte[] tempData = new byte[rawinbuf.limit()];
                 nsmplread = fpi.read(tempData);
