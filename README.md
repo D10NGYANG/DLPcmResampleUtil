@@ -15,7 +15,7 @@ maven { url 'https://raw.githubusercontent.com/D10NGYANG/maven-repo/main/reposit
 ```
 ### 2、添加依赖
 ```gradle
-implementation 'com.github.D10NGYANG:DLPcmResample:$version'
+implementation 'com.github.D10NGYANG:DLPcmResampleUtil:$version'
 ```
 ### 3、混淆
 ```properties
