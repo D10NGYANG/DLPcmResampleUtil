@@ -7,7 +7,7 @@ PCM文件调整采样率，Java库
 - [ideastudios/AndroidPcmResample](https://github.com/ideastudios/AndroidPcmResample)
 
 ## 版本
-version = `0.0.5`
+version = `0.0.6`
 
 ## 使用说明
 ### 1、添加仓库
