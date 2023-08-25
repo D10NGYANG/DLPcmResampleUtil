@@ -1,11 +1,11 @@
 plugins {
-    kotlin("jvm") version "1.9.0"
+    kotlin("jvm") version "1.9.10"
     id("maven-publish")
     id("com.github.ben-manes.versions") version "0.47.0"
 }
 
 group = "com.github.D10NGYANG"
-version = "0.0.7"
+version = "0.0.8"
 
 repositories {
     mavenCentral()
