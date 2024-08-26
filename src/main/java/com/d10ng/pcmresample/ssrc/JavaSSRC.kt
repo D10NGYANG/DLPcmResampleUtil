@@ -16,16 +16,16 @@ package com.d10ng.pcmresample.ssrc
 import com.d10ng.pcmresample.ssrc.fft.FFT
 import com.d10ng.pcmresample.ssrc.fft.VaviSoundFFT
 import com.d10ng.pcmresample.utils.I0Bessel.value
-import java.io.*
+//import java.io.*
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.*
 import kotlin.math.*
+import kotlin.random.Random
 
 class JavaSSRC {
-    //    private static final java.util.logging.Logger Log = java.util.logging.Logger.getLogger("JavaSSRC");
+
     interface ProgressListener {
-        fun onChanged(progress: Double)
+        //fun onChanged(progress: Double)
         fun onShowMessage(message: String?)
     }
 
@@ -132,21 +132,21 @@ class JavaSSRC {
     val outBytes: ByteArray
         get() = rCtx!!.outBytes!!
 
-    val peak: Double
+    /*val peak: Double
         get() {
             if (rCtx == null) {
                 return 0.0
             }
             return rCtx!!.peak
-        }
+        }*/
 
-    fun setOnProgressListener(listener: ProgressListener?) {
+   /* fun setOnProgressListener(listener: ProgressListener?) {
         this.listener = listener
-    }
+    }*/
 
-    fun setFastProfile(fast: Boolean) {
+    /*fun setFastProfile(fast: Boolean) {
         this.fast = fast
-    }
+    }*/
 
     fun setSrcChannels(numChannels: Int) {
         this.srcChannels = numChannels
@@ -182,73 +182,73 @@ class JavaSSRC {
         this.dstSamplingRate = dstSamplingRate
     }
 
-    fun setAttenuation(attenuation: Double) {
+    /*fun setAttenuation(attenuation: Double) {
         this.gain = dBToGain(-attenuation)
-    }
+    }*/
 
-    fun setGain(gain: Double) {
+    /*fun setGain(gain: Double) {
         this.gain = gain
-    }
+    }*/
 
-    fun setDitherType(ditherType: Int) {
+    /*fun setDitherType(ditherType: Int) {
         require(!(ditherType < 0 || ditherType > 4)) { "Dither type must be 0, 1, 2, 3, or 4" }
         this.ditherType = ditherType
-    }
+    }*/
 
-    fun setPdfType(pdfType: Int) {
+    /*fun setPdfType(pdfType: Int) {
         require(!(pdfType < 0 || pdfType > 2)) { "PDF type must be 0, 1, or 2" }
         this.pdfType = pdfType
         this.noiseAmplitude = noiseAmpPresets[pdfType]
-    }
+    }*/
 
-    fun setNoiseAmplitude(noiseAmplitude: Double) {
+    /*fun setNoiseAmplitude(noiseAmplitude: Double) {
         this.noiseAmplitude = noiseAmplitude
-    }
+    }*/
 
-    fun isTwoPass(): Boolean {
+    /*fun isTwoPass(): Boolean {
         if (rCtx != null) {
             return rCtx!!.twopass
         }
         return this.twoPass
-    }
+    }*/
 
-    fun setTwoPass(twoPass: Boolean) {
+    /*fun setTwoPass(twoPass: Boolean) {
         this.twoPass = twoPass
-    }
+    }*/
 
-    fun setNormalize(normalize: Boolean) {
+    /*fun setNormalize(normalize: Boolean) {
         this.normalize = normalize
-    }
+    }*/
 
-    fun setSrcFloat(srcFloat: Boolean) {
+    /*fun setSrcFloat(srcFloat: Boolean) {
         this.srcFloat = srcFloat
-    }
+    }*/
 
-    fun isSrcFloat(): Boolean {
+    /*fun isSrcFloat(): Boolean {
         if (rCtx != null) {
             return rCtx!!.srcFloat
         }
         return this.srcFloat
-    }
+    }*/
 
-    fun setDstFloat(dstFloat: Boolean) {
+    /*fun setDstFloat(dstFloat: Boolean) {
         this.dstFloat = dstFloat
-    }
+    }*/
 
-    fun isDstFloat(): Boolean {
+    /*fun isDstFloat(): Boolean {
         if (rCtx != null) {
             return rCtx!!.dstFloat
         }
         return this.dstFloat
-    }
+    }*/
 
-    fun setTempFilename(tempFilename: String?) {
+    /*fun setTempFilename(tempFilename: String?) {
         this.tempFilename = tempFilename
-    }
+    }*/
 
-    fun setFFT(fft: FFT) {
+    /*fun setFFT(fft: FFT) {
         this.fft = fft
-    }
+    }*/
 
     fun initialize() {
         rCtx = ResampleContext()
@@ -454,11 +454,11 @@ class JavaSSRC {
         }
     }
 
-    private fun showProgress(p: Double) {
+    /*private fun showProgress(p: Double) {
         if (listener != null) {
             listener!!.onChanged(p)
         }
-    }
+    }*/
 
     private fun showMessage(msg: String) {
         if (listener != null) {
@@ -466,9 +466,7 @@ class JavaSSRC {
         }
     }
 
-    /* end byte[] input */ /* Stream input/output */
-    @Throws(IOException::class)
-    private fun upsample(fpi: InputStream, fpo: OutputStream, gain: Double, length: Long) {
+    /*private fun upsample(fpi: InputStream, fpo: OutputStream, gain: Double, length: Long) {
         var spcount = 0
         var ending: Boolean
         var nsmplread: Int
@@ -505,18 +503,13 @@ class JavaSSRC {
                         nsmplread += tmpLen
                     }
                 }
-            } catch (e: IOException) {
+            } catch (e: Exception) {
                 EOF = true
             }
             rCtx!!.inBuffer!!.limit(nsmplread)
             nsmplread /= rCtx!!.bpf
             fillInBuf(rCtx!!, nsmplread)
-            Arrays.fill(
-                rCtx!!.inbuf,
-                rCtx!!.nch * rCtx!!.inbuflen + nsmplread * rCtx!!.nch,
-                rCtx!!.nch * rCtx!!.inbuflen + rCtx!!.nch * toberead2,
-                0.0
-            )
+            rCtx!!.inbuf.fill(0.0,rCtx!!.nch * rCtx!!.inbuflen + nsmplread * rCtx!!.nch, rCtx!!.nch * rCtx!!.inbuflen + rCtx!!.nch * toberead2)
 
             rCtx!!.inbuflen += toberead2
 
@@ -555,10 +548,9 @@ class JavaSSRC {
             }
         }
         showProgress(1.0)
-    }
+    }*/
 
-    @Throws(IOException::class)
-    private fun downsample(fpi: InputStream, fpo: OutputStream, gain: Double, length: Long) {
+    /*private fun downsample(fpi: InputStream, fpo: OutputStream, gain: Double, length: Long) {
         var spcount = 0
         var nsmplwrt2: Int
         var ending: Boolean
@@ -593,13 +585,13 @@ class JavaSSRC {
                         nsmplread += tmpLen
                     }
                 }
-            } catch (e: IOException) {
+            } catch (e: Exception) {
                 EOF = true
             }
             rCtx!!.inBuffer!!.limit(nsmplread)
             nsmplread /= rCtx!!.bpf
             fillInBuf(rCtx!!, nsmplread)
-            Arrays.fill(rCtx!!.inbuf, nsmplread * rCtx!!.nch, rCtx!!.nch * toberead, 0.0)
+            rCtx!!.inbuf.fill(0.0,nsmplread * rCtx!!.nch, rCtx!!.nch * toberead)
 
             rCtx!!.sumread += nsmplread.toLong()
             ending = EOF || rCtx!!.sumread >= chanklen
@@ -636,10 +628,9 @@ class JavaSSRC {
         }
 
         showProgress(1.0)
-    }
+    }*/
 
-    @Throws(IOException::class)
-    private fun no_src(fpi: InputStream, fpo: OutputStream, gain: Double, length: Long) {
+    /*private fun no_src(fpi: InputStream, fpo: OutputStream, gain: Double, length: Long) {
         var ch: Int
         var sumread = 0
         var readLen: Int
@@ -659,11 +650,11 @@ class JavaSSRC {
                 while (readLen < rCtx!!.bps * rCtx!!.rnch) {
                     tmpLen = fpi.read(rCtx!!.rawinbuf, readLen, rCtx!!.bps * rCtx!!.rnch - readLen)
                     if (tmpLen < 0) {
-                        throw EOFException()
+                        throw Exception("EOF")
                     }
                     readLen += tmpLen
                 }
-            } catch (ignored: EOFException) {
+            } catch (ignored: Exception) {
             }
             rCtx!!.outBuffer!!.clear()
 
@@ -696,13 +687,13 @@ class JavaSSRC {
 
         fpo.flush()
         showProgress(1.0)
-    }
+    }*/
 
-    fun resetShaper() {
+    /*fun resetShaper() {
         rCtx!!.randptr = 0
-    }
+    }*/
 
-    fun doubleToBytes(d: Double, ch: Int, ob: ByteBuffer) {
+    /*fun doubleToBytes(d: Double, ch: Int, ob: ByteBuffer) {
         var s: Int
         when (rCtx!!.dbps) {
             1 -> {
@@ -726,9 +717,9 @@ class JavaSSRC {
                 }
             }
         }
-    }
+    }*/
 
-    fun calcSecondPassGain(): Double {
+    /*fun calcSecondPassGain(): Double {
         if (!rCtx!!.normalize) {
             if (rCtx!!.peak < rCtx!!.gain) {
                 rCtx!!.peak = 1.0
@@ -753,9 +744,9 @@ class JavaSSRC {
             }
         }
         return 1.0
-    }
+    }*/
 
-    fun resample(samples: Array<FloatArray>, length: Int, isLast: Boolean): Int {
+    /*fun resample(samples: Array<FloatArray>, length: Int, isLast: Boolean): Int {
         checkNotNull(rCtx) { "Resampler has not been initialized" }
 
         check(rCtx!!.srcFloat) { "Source is not set to floating point" }
@@ -767,9 +758,9 @@ class JavaSSRC {
         } else {
             no_src(rCtx!!, samples, length, rCtx!!.gain)
         }
-    }
+    }*/
 
-    fun resample(samples: Array<IntArray>, length: Int, isLast: Boolean): Int {
+    /*fun resample(samples: Array<IntArray>, length: Int, isLast: Boolean): Int {
         checkNotNull(rCtx) { "Resampler has not been initialized" }
 
         return if (rCtx!!.sfrq < rCtx!!.dfrq) {
@@ -779,7 +770,7 @@ class JavaSSRC {
         } else {
             no_src(rCtx!!, samples, length, rCtx!!.gain)
         }
-    }
+    }*/
 
     fun resample(samples: ByteArray, offset: Int, length: Int, isLast: Boolean): Int {
         checkNotNull(rCtx) { "Resampler has not been initialized" }
@@ -793,8 +784,7 @@ class JavaSSRC {
         }
     }
 
-    @Throws(IOException::class)
-    fun resample(fpi: InputStream, fpo: OutputStream, length: Long): Double {
+    /*fun resample(fpi: InputStream, fpo: OutputStream, length: Long): Double {
         checkNotNull(rCtx) { "Resampler has not been initialized" }
 
         if (rCtx!!.twopass) {
@@ -910,11 +900,11 @@ class JavaSSRC {
             }
         }
         return rCtx!!.peak
-    }
+    }*/
 
     companion object {
         //	private static final boolean DEBUG = false; 
-        const val VERSION: String = "1.40"
+        //const val VERSION: String = "1.40"
         private const val RANDBUFLEN = 65536
 
         private val scoeflen = intArrayOf(1, 16, 20, 16, 16, 15, 16, 15)
@@ -979,7 +969,7 @@ class JavaSSRC {
             return (if ((x) >= 0) (((x) + 0.5).toInt()) else (((x) - 0.5).toInt()))
         }
 
-        private val noiseAmpPresets = doubleArrayOf(0.7, 0.9, 0.18)
+        //private val noiseAmpPresets = doubleArrayOf(0.7, 0.9, 0.18)
 
         private const val POOLSIZE = 97
 
@@ -1003,8 +993,8 @@ class JavaSSRC {
             rCtx.fft!!.realDFT(rCtx.stageA)
 
             for (i in 0 until rCtx.nch) {
-                Arrays.fill(rCtx.buf1[i], 0.0)
-                Arrays.fill(rCtx.buf2[i], 0.0)
+                rCtx.buf1[i].fill(0.0)
+                rCtx.buf2[i].fill(0.0)
             }
             rCtx.inBuffer!!.clear()
             rCtx.outBuffer!!.clear()
@@ -1106,8 +1096,8 @@ class JavaSSRC {
             }
 
             /* Make stage 2 filter */
-            var ipsize: Int
-            var wsize: Int
+            //var ipsize: Int
+            //var wsize: Int
 
             d = if (rCtx.AA <= 21) {
                 0.9222
@@ -1187,8 +1177,8 @@ class JavaSSRC {
             var df: Double
             var alp: Double
             var iza: Double
-            var ipsize: Int
-            var wsize: Int
+            //var ipsize: Int
+            //var wsize: Int
             var i: Int
 
             rCtx.frqgcd = gcd(rCtx.sfrq, rCtx.dfrq)
@@ -1456,7 +1446,7 @@ class JavaSSRC {
             return x1
         }
 
-        private fun fillInBuf(rCtx: ResampleContext, samples: Array<FloatArray>, offset: Int, length: Int): Int {
+        /*private fun fillInBuf(rCtx: ResampleContext, samples: Array<FloatArray>, offset: Int, length: Int): Int {
             val ibOffset = rCtx.nch * rCtx.inbuflen
             val len = length * rCtx.nch
             var j = 0
@@ -1467,9 +1457,9 @@ class JavaSSRC {
                 rCtx.inbuf[ibOffset + i] = samples[i % rCtx.nch + j][offset + i / rCtx.nch].toDouble()
             }
             return length
-        }
+        }*/
 
-        private fun fillInBuf(rCtx: ResampleContext, samples: Array<IntArray>, offset: Int, length: Int): Int {
+        /*private fun fillInBuf(rCtx: ResampleContext, samples: Array<IntArray>, offset: Int, length: Int): Int {
             val ibOffset = rCtx.nch * rCtx.inbuflen
             val len = length * rCtx.nch
             var j = 0
@@ -1515,7 +1505,7 @@ class JavaSSRC {
                 }
             }
             return length
-        }
+        }*/
 
         private fun fillInBuf(rCtx: ResampleContext, length: Int) {
             val offset = rCtx.nch * rCtx.inbuflen
@@ -1820,8 +1810,7 @@ class JavaSSRC {
             return writeLen
         }
 
-        @Throws(IOException::class)
-        private fun writeOutStream(
+        /*private fun writeOutStream(
             rCtx: ResampleContext,
             fpo: OutputStream,
             nsmplwrt: Int,
@@ -1873,7 +1862,7 @@ class JavaSSRC {
                 }
             }
             return false
-        }
+        }*/
 
         private fun upSample(rCtx: ResampleContext, nsmplwrt1: Int): Int {
             var p: Int
@@ -1964,7 +1953,7 @@ class JavaSSRC {
                 rCtx.osc = osc_backup
 
                 // apply stage 2 filter
-                Arrays.fill(rCtx.buf2[ch], nsmplwrt1, rCtx.nb, 0.0)
+                rCtx.buf2[ch].fill(0.0, nsmplwrt1, rCtx.nb)
 
                 rCtx.fft!!.realDFT(rCtx.buf2[ch])
 
@@ -2028,7 +2017,7 @@ class JavaSSRC {
             while (ch < rCtx.nch) {
                 rCtx.rps = rps_backup
 
-                Arrays.fill(rCtx.buf1[ch], 0, rCtx.rps, 0.0)
+                rCtx.buf1[ch].fill(0.0, 0, rCtx.rps)
 
                 i = rCtx.rps
                 j = 0
@@ -2045,7 +2034,7 @@ class JavaSSRC {
                 }
 
                 //			assert(j == ((rCtx.nb2-rCtx.rps-1)/rCtx.osf+1));
-                Arrays.fill(rCtx.buf1[ch], rCtx.nb2, rCtx.nb, 0.0)
+                rCtx.buf1[ch].fill(0.0, rCtx.nb2, rCtx.nb)
 
                 rCtx.rps = i - rCtx.nb2
                 rCtx.fft!!.realDFT(rCtx.buf1[ch])
@@ -2105,11 +2094,7 @@ class JavaSSRC {
             return nsmplwrt2
         }
 
-        /*
-     * float[][] input
-     * Duplicated the int[][] version instead of generalizing it to minimize branching within the loop.
-     */
-        private fun upsample(
+        /*private fun upsample(
             rCtx: ResampleContext,
             samples: Array<FloatArray>,
             length: Int,
@@ -2130,7 +2115,7 @@ class JavaSSRC {
             }
 
             if (length == 0 && rCtx.inbuflen > 0 && isLast) {
-                Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch, 0.0)
+                rCtx.inbuf.fill(0.0, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch)
                 nsmplwrt1 = rCtx.nb2
                 rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch
                 nsmplwrt2 = upSample(rCtx, nsmplwrt1)
@@ -2153,7 +2138,7 @@ class JavaSSRC {
                         rCtx.sumread += (length - lenUsed).toLong()
                         return outBytesWritten
                     }
-                    Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch, 0.0)
+                    rCtx.inbuf.fill(0.0, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch)
                     toberead = length - lenUsed
                 }
                 rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, toberead)
@@ -2193,9 +2178,9 @@ class JavaSSRC {
                 rCtx.rp -= rCtx.ds * rCtx.fs1sfrq
             }
             return outBytesWritten
-        }
+        }*/
 
-        private fun downsample(
+        /*private fun downsample(
             rCtx: ResampleContext,
             samples: Array<FloatArray>,
             length: Int,
@@ -2214,7 +2199,7 @@ class JavaSSRC {
             }
 
             if (length == 0 && rCtx.inbuflen > 0 && isLast) {
-                Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, toberead * rCtx.nch, 0.0)
+                rCtx.inbuf.fill(0.0, rCtx.inbuflen * rCtx.nch, toberead * rCtx.nch)
                 nsmplwrt = downSample(rCtx)
                 rCtx.inbuflen = 0
                 rCtx.rp += nsmplwrt * (rCtx.fs2 / rCtx.dfrq)
@@ -2236,7 +2221,7 @@ class JavaSSRC {
                         rCtx.sumread += (length - lenUsed).toLong()
                         return outBytesWritten
                     }
-                    Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, (toberead + rCtx.inbuflen) * rCtx.nch, 0.0)
+                    rCtx.inbuf.fill(0.0, rCtx.inbuflen * rCtx.nch, (toberead + rCtx.inbuflen) * rCtx.nch)
                     toberead = length - lenUsed
                 }
                 rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, toberead)
@@ -2280,9 +2265,9 @@ class JavaSSRC {
                 }
             }
             return outBytesWritten
-        }
+        }*/
 
-        private fun no_src(rCtx: ResampleContext, samples: Array<FloatArray>, length: Int, gain: Double): Int {
+        /*private fun no_src(rCtx: ResampleContext, samples: Array<FloatArray>, length: Int, gain: Double): Int {
             var i: Int
             var ch: Int
             var f: Double
@@ -2340,10 +2325,9 @@ class JavaSSRC {
                 outBytesWritten += rCtx.outBuffer!!.limit()
             }
             return outBytesWritten
-        }
+        }*/
 
-        /* end float[][] input */ /* int[][] input */
-        private fun upsample(
+        /*private fun upsample(
             rCtx: ResampleContext,
             samples: Array<IntArray>,
             length: Int,
@@ -2364,7 +2348,7 @@ class JavaSSRC {
             }
 
             if (length == 0 && rCtx.inbuflen > 0 && isLast) {
-                Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch, 0.0)
+                rCtx.inbuf.fill(0.0, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch)
                 nsmplwrt1 = rCtx.nb2
                 rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch
                 nsmplwrt2 = upSample(rCtx, nsmplwrt1)
@@ -2387,7 +2371,7 @@ class JavaSSRC {
                         rCtx.sumread += (length - lenUsed).toLong()
                         return outBytesWritten
                     }
-                    Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch, 0.0)
+                    rCtx.inbuf.fill(0.0, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch)
                     toberead = length - lenUsed
                 }
                 rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, toberead)
@@ -2428,9 +2412,9 @@ class JavaSSRC {
                 rCtx.rp -= rCtx.ds * rCtx.fs1sfrq
             }
             return outBytesWritten
-        }
+        }*/
 
-        private fun downsample(
+        /*private fun downsample(
             rCtx: ResampleContext,
             samples: Array<IntArray>,
             length: Int,
@@ -2449,7 +2433,7 @@ class JavaSSRC {
             }
 
             if (length == 0 && rCtx.inbuflen > 0 && isLast) {
-                Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, toberead * rCtx.nch, 0.0)
+                rCtx.inbuf.fill(0.0, rCtx.inbuflen * rCtx.nch, toberead * rCtx.nch)
                 nsmplwrt = downSample(rCtx)
                 rCtx.inbuflen = 0
                 rCtx.rp += nsmplwrt * (rCtx.fs2 / rCtx.dfrq)
@@ -2471,7 +2455,7 @@ class JavaSSRC {
                         rCtx.sumread += (length - lenUsed).toLong()
                         return outBytesWritten
                     }
-                    Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, (toberead + rCtx.inbuflen) * rCtx.nch, 0.0)
+                    rCtx.inbuf.fill(0.0, rCtx.inbuflen * rCtx.nch, (toberead + rCtx.inbuflen) * rCtx.nch)
                     toberead = length - lenUsed
                 }
                 rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, toberead)
@@ -2515,9 +2499,9 @@ class JavaSSRC {
                 }
             }
             return outBytesWritten
-        }
+        }*/
 
-        private fun no_src(rCtx: ResampleContext, samples: Array<IntArray>, length: Int, gain: Double): Int {
+        /*private fun no_src(rCtx: ResampleContext, samples: Array<IntArray>, length: Int, gain: Double): Int {
             var i: Int
             var ch: Int
             var f: Double
@@ -2585,7 +2569,7 @@ class JavaSSRC {
                 outBytesWritten += rCtx.outBuffer!!.limit()
             }
             return outBytesWritten
-        }
+        }*/
 
         /* end int[][] input */ /* byte[] input */
         private fun upsample(
@@ -2613,11 +2597,10 @@ class JavaSSRC {
                 nsmplread = rCtx.inBuffer!!.position() / rCtx.bpf
                 rCtx.inBuffer!!.flip()
                 fillInBuf(rCtx, nsmplread)
-                Arrays.fill(
-                    rCtx.inbuf,
+                rCtx.inbuf.fill(
+                    0.0,
                     rCtx.nch * (rCtx.inbuflen + nsmplread),
-                    rCtx.nch * (rCtx.inbuflen + toberead),
-                    0.0
+                    rCtx.nch * (rCtx.inbuflen + toberead)
                 )
                 rCtx.inBuffer!!.clear()
                 rCtx.inbuflen += toberead
@@ -2648,11 +2631,10 @@ class JavaSSRC {
                 if (rCtx.inBuffer!!.position() < toberead * rCtx.bpf) {
                     if (!isLast) return outBytesWritten
                     nsmplread = rCtx.inBuffer!!.position() / rCtx.bpf
-                    Arrays.fill(
-                        rCtx.inbuf,
+                    rCtx.inbuf.fill(
+                        0.0,
                         rCtx.nch * (rCtx.inbuflen + nsmplread),
-                        rCtx.nch * (rCtx.inbuflen + toberead),
-                        0.0
+                        rCtx.nch * (rCtx.inbuflen + toberead)
                     )
                     toberead = nsmplread
                 }
@@ -2724,7 +2706,7 @@ class JavaSSRC {
                 nsmplread = rCtx.inBuffer!!.position() / (rCtx.bpf)
                 rCtx.inBuffer!!.flip()
                 fillInBuf(rCtx, nsmplread)
-                Arrays.fill(rCtx.inbuf, nsmplread * rCtx.nch, toberead * rCtx.nch, 0.0)
+                rCtx.inbuf.fill(0.0, nsmplread * rCtx.nch, toberead * rCtx.nch)
                 rCtx.inBuffer!!.clear()
                 rCtx.sumread += nsmplread.toLong()
                 nsmplwrt = downSample(rCtx)
@@ -2750,11 +2732,10 @@ class JavaSSRC {
                 if (rCtx.inBuffer!!.position() < toberead * rCtx.bpf) {
                     if (!isLast) return outBytesWritten
                     nsmplread = rCtx.inBuffer!!.position() / rCtx.bpf
-                    Arrays.fill(
-                        rCtx.inbuf,
+                    rCtx.inbuf.fill(
+                        0.0,
                         rCtx.nch * (rCtx.inbuflen + nsmplread),
-                        rCtx.nch * (rCtx.inbuflen + toberead),
-                        0.0
+                        rCtx.nch * (rCtx.inbuflen + toberead)
                     )
                     toberead = nsmplread
                 }
@@ -2905,7 +2886,7 @@ class JavaSSRC {
             return 0.0
         }
 
-        private fun intSampleToDouble(rCtx: ResampleContext, sample: Int): Double {
+        /*private fun intSampleToDouble(rCtx: ResampleContext, sample: Int): Double {
             when (rCtx.bps) {
                 1 -> return NORMALIZE_FACTOR_8 * ((sample and 0xff) - 128).toDouble()
                 2 -> return NORMALIZE_FACTOR_16 * sample
@@ -2913,7 +2894,7 @@ class JavaSSRC {
                 4 -> return NORMALIZE_FACTOR_32 * sample
             }
             return 0.0
-        }
+        }*/
 
         private fun writeToOutBuffer(rCtx: ResampleContext, f: Double, ch: Int) {
             var f1 = f
@@ -2945,7 +2926,7 @@ class JavaSSRC {
             }
         }
 
-        private fun writeIntToBuffer(rCtx: ResampleContext, sample: Int, gain: Double) {
+        /*private fun writeIntToBuffer(rCtx: ResampleContext, sample: Int, gain: Double) {
             var s = (sample * gain).toInt()
             when (rCtx.dbps) {
                 1 -> rCtx.outBuffer!!.put(s.toByte())
@@ -2956,10 +2937,10 @@ class JavaSSRC {
                     rCtx.outBuffer!!.put(s.toByte())
                 }
             }
-        }
+        }*/
 
-        fun dBToGain(att: Double): Double {
+        /*fun dBToGain(att: Double): Double {
             return 10.0.pow(att / 20)
-        }
+        }*/
     }
 }
