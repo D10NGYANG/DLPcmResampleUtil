@@ -4,7 +4,7 @@ import com.d10ng.pcmresample.constant.ChannelType
 import com.d10ng.pcmresample.constant.EncodingType
 import com.d10ng.pcmresample.ssrc.JavaSSRC
 import java.io.*
-import java.nio.ByteOrder
+import com.d10ng.pcmresample.utils.ByteOrder
 
 object DLPcmResampleUtil {
     /**

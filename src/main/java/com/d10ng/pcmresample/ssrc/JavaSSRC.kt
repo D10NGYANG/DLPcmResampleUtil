@@ -16,8 +16,8 @@ package com.d10ng.pcmresample.ssrc
 import com.d10ng.pcmresample.ssrc.fft.FFT
 import com.d10ng.pcmresample.ssrc.fft.VaviSoundFFT
 import com.d10ng.pcmresample.utils.I0Bessel.value
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import com.d10ng.pcmresample.utils.ByteBuffer
+import com.d10ng.pcmresample.utils.ByteOrder
 import kotlin.math.*
 import kotlin.random.Random
 
@@ -1223,7 +1223,7 @@ class JavaSSRC {
                     rCtx.outBytes = tmpBytes
                 }
                 rCtx.outBuffer!!.position(writeOffset)
-                rCtx.outBuffer!![rCtx.outBytes, offset, writeLen]
+                rCtx.outBuffer!![rCtx.outBytes!!, offset, writeLen]
             }
 
             return writeLen
@@ -1744,7 +1744,7 @@ class JavaSSRC {
                     System.arraycopy(rCtx.outBytes!!, 0, tmpBytes, 0, outBytesWritten)
                     rCtx.outBytes = tmpBytes
                 }
-                rCtx.outBuffer!![rCtx.outBytes, outBytesWritten, rCtx.outBuffer!!.limit()]
+                rCtx.outBuffer!![rCtx.outBytes!!, outBytesWritten, rCtx.outBuffer!!.limit()]
                 outBytesWritten += rCtx.outBuffer!!.limit()
             }
             return outBytesWritten
