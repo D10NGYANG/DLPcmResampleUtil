@@ -1,21 +1,11 @@
-/*
- * Copyright(C) 1996 Takuya OOURA (email: ooura@mmm.t.u-tokyo.ac.jp).
- * You may use, copy, modify this code for any purpose and
- * without fee. You may distribute this ORIGINAL package.
- */
-package com.d10ng.pcmresample.utils;
+package com.d10ng.pcmresample.utils
 
+import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.sqrt
 
-/**
- * Bessel I_0().
- *
- * @author <a href="mailto:ooura@mmm.t.u-tokyo.ac.jp">Takuya OOURA</a>
- * @author <a href="mailto:vavivavi@yahoo.co.jp">Naohide Sano</a> (nsano)
- * @version 0.00 060127 nsano port to java version <br>
- */
-public class I0Bessel {
-    /** */
-    private static final double[] a = {
+object I0Bessel {
+    private val a: DoubleArray = doubleArrayOf(
         8.5246820682016865877e-11, 2.5966600546497407288e-9,
         7.9689994568640180274e-8, 1.9906710409667748239e-6,
         4.0312469446528002532e-5, 6.4499871606224265421e-4,
@@ -51,9 +41,9 @@ public class I0Bessel {
         0.44726764292723985087, 1.7726685170014087784,
         4.0062907863712704432, 3.9952750700487845355,
         1.0016354346654179322
-    };
-    /** */
-    private static final double[] b = {
+    )
+    /**  */
+    private val b: DoubleArray = doubleArrayOf(
         6.7852367144945531383e-8, 4.6266061382821826854e-7,
         6.9703135812354071774e-6, 7.6637663462953234134e-5,
         7.9113515222612691636e-4, 0.0073401204731103808981,
@@ -89,9 +79,9 @@ public class I0Bessel {
         131.28727387146173141, 677.38107093296675421,
         2802.3724744545046518, 8718.5731420798254081,
         18141.348781638832286, 18948.925349296308859
-    };
-    /** */
-    private static final double[] c = {
+    )
+    /**  */
+    private val c: DoubleArray = doubleArrayOf(
         2.5568678676452702768e-15, 3.0393953792305924324e-14,
         6.3343751991094840009e-13, 1.5041298011833009649e-11,
         4.4569436918556541414e-10, 1.746393051427167951e-8,
@@ -117,44 +107,43 @@ public class I0Bessel {
         1.2521615963377513729e-10, 1.8959658437754727957e-8,
         1.0020716710561353622e-6, 1.073037119856927559e-4,
         0.05150322383300230775
-    };
+    )
 
     /**
      *
      * @param x
      * @return
      */
-    public static double value(double x) {
-        int k;
-        double w, t, y;
-        w = Math.abs(x);
+    fun value(x: Double): Double {
+        var k: Int
+        val t: Double
+        val y: Double
+        val w = abs(x)
         if (w < 8.5) {
-            t = w * w * 0.0625;
-            k = 13 * ((int) t);
+            t = w * w * 0.0625
+            k = 13 * (t.toInt())
             y = (((((((((((a[k] * t + a[k + 1]) * t +
-                a[k + 2]) * t + a[k + 3]) * t + a[k + 4]) * t +
-                a[k + 5]) * t + a[k + 6]) * t + a[k + 7]) * t +
-                a[k + 8]) * t + a[k + 9]) * t + a[k + 10]) * t +
-                a[k + 11]) * t + a[k + 12];
+                    a[k + 2]) * t + a[k + 3]) * t + a[k + 4]) * t +
+                    a[k + 5]) * t + a[k + 6]) * t + a[k + 7]) * t +
+                    a[k + 8]) * t + a[k + 9]) * t + a[k + 10]) * t +
+                    a[k + 11]) * t + a[k + 12]
         } else if (w < 12.5) {
-            k = (int) w;
-            t = w - k;
-            k = 14 * (k - 8);
+            k = w.toInt()
+            t = w - k
+            k = 14 * (k - 8)
             y = ((((((((((((b[k] * t + b[k + 1]) * t +
-                b[k + 2]) * t + b[k + 3]) * t + b[k + 4]) * t +
-                b[k + 5]) * t + b[k + 6]) * t + b[k + 7]) * t +
-                b[k + 8]) * t + b[k + 9]) * t + b[k + 10]) * t +
-                b[k + 11]) * t + b[k + 12]) * t + b[k + 13];
+                    b[k + 2]) * t + b[k + 3]) * t + b[k + 4]) * t +
+                    b[k + 5]) * t + b[k + 6]) * t + b[k + 7]) * t +
+                    b[k + 8]) * t + b[k + 9]) * t + b[k + 10]) * t +
+                    b[k + 11]) * t + b[k + 12]) * t + b[k + 13]
         } else {
-            t = 60 / w;
-            k = 9 * ((int) t);
+            t = 60 / w
+            k = 9 * (t.toInt())
             y = ((((((((c[k] * t + c[k + 1]) * t +
-                c[k + 2]) * t + c[k + 3]) * t + c[k + 4]) * t +
-                c[k + 5]) * t + c[k + 6]) * t + c[k + 7]) * t +
-                c[k + 8]) * Math.sqrt(t) * Math.exp(w);
+                    c[k + 2]) * t + c[k + 3]) * t + c[k + 4]) * t +
+                    c[k + 5]) * t + c[k + 6]) * t + c[k + 7]) * t +
+                    c[k + 8]) * sqrt(t) * exp(w)
         }
-        return y;
+        return y
     }
 }
-
-/* */

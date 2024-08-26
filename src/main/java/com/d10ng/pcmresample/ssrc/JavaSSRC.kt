@@ -11,2582 +11,2955 @@
  * Contributors: Wayne Tam - initial API and implementation
  * ****************************************************************************
  */
-package com.d10ng.pcmresample.ssrc;
+package com.d10ng.pcmresample.ssrc
 
-import com.d10ng.pcmresample.ssrc.fft.FFT;
-import com.d10ng.pcmresample.ssrc.fft.VaviSoundFFT;
-import com.d10ng.pcmresample.utils.I0Bessel;
+import com.d10ng.pcmresample.ssrc.fft.FFT
+import com.d10ng.pcmresample.ssrc.fft.VaviSoundFFT
+import com.d10ng.pcmresample.utils.I0Bessel.value
+import java.io.*
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.*
+import kotlin.math.*
 
-import java.io.*;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.DoubleBuffer;
-import java.util.Arrays;
-import java.util.Random;
-
-@SuppressWarnings("unused")
-public class JavaSSRC {
-//    private static final java.util.logging.Logger Log = java.util.logging.Logger.getLogger("JavaSSRC");
-
-    public interface ProgressListener {
-        void onChanged(double progress);
-        void onShowMessage(String message);
-    }
-//	private static final boolean DEBUG = false; 
-
-    public static final String VERSION = "1.40";
-    private static final int RANDBUFLEN = 65536;
-
-    private static final int[] scoeflen = new int[]{1, 16, 20, 16, 16, 15, 16, 15};
-    private static final int[] samp = new int[]{8, 18, 27, 8, 8, 8, 10, 9};
-    private static final int[] scoeffreq = new int[]{0, 48000, 44100, 37800, 32000, 22050, 48000, 44100};
-
-    private static final double[][] shapercoefs = new double[][]{
-        {-1}, /* triangular dither */
-        {-2.8720729351043701172, 5.0413231849670410156, -6.2442994117736816406, 5.8483986854553222656,
-            -3.7067542076110839844, 1.0495119094848632812, 1.1830236911773681641, -2.1126792430877685547,
-            1.9094531536102294922, -0.99913084506988525391, 0.17090806365013122559, 0.32615602016448974609,
-            -0.39127644896507263184, 0.26876461505889892578, -0.097676105797290802002, 0.023473845794796943665,}, /* 48k, N=16, amp=18 */
-        {-2.6773197650909423828, 4.8308925628662109375, -6.570110321044921875, 7.4572014808654785156,
-            -6.7263274192810058594, 4.8481650352478027344, -2.0412089824676513672, -0.7006359100341796875,
-            2.9537565708160400391, -4.0800385475158691406, 4.1845216751098632812, -3.3311812877655029297,
-            2.1179926395416259766, -0.879302978515625, 0.031759146600961685181, 0.42382788658142089844,
-            -0.47882103919982910156, 0.35490813851356506348, -0.17496839165687561035, 0.060908168554306030273,}, /* 44.1k, N=20, amp=27 */
-        {-1.6335992813110351562, 2.2615492343902587891, -2.4077029228210449219, 2.6341717243194580078,
-            -2.1440362930297851562, 1.8153258562088012695, -1.0816224813461303711, 0.70302653312683105469,
-            -0.15991993248462677002, -0.041549518704414367676, 0.29416576027870178223, -0.2518316805362701416,
-            0.27766478061676025391, -0.15785403549671173096, 0.10165894031524658203, -0.016833892092108726501,}, /* 37.8k, N=16 */
-        {-0.82901298999786376953, 0.98922657966613769531, -0.59825712442398071289, 1.0028809309005737305,
-            -0.59938216209411621094, 0.79502451419830322266, -0.42723315954208374023, 0.54492527246475219727,
-            -0.30792605876922607422, 0.36871799826622009277, -0.18792048096656799316, 0.2261127084493637085,
-            -0.10573341697454452515, 0.11435490846633911133, -0.038800679147243499756, 0.040842197835445404053,}, /* 32k, N=16 */
-        {-0.065229974687099456787, 0.54981261491775512695, 0.40278548002243041992, 0.31783768534660339355,
-            0.28201797604560852051, 0.16985194385051727295, 0.15433363616466522217, 0.12507140636444091797,
-            0.08903945237398147583, 0.064410120248794555664, 0.047146003693342208862, 0.032805237919092178345,
-            0.028495194390416145325, 0.011695005930960178375, 0.011831838637590408325,}, /* 22.05k, N=15 */
-        {-2.3925774097442626953, 3.4350297451019287109, -3.1853709220886230469, 1.8117271661758422852,
-            0.20124770700931549072, -1.4759907722473144531, 1.7210904359817504883, -0.97746700048446655273,
-            0.13790138065814971924, 0.38185903429985046387, -0.27421241998672485352, -0.066584214568138122559,
-            0.35223302245140075684, -0.37672343850135803223, 0.23964276909828186035, -0.068674825131893157959,}, /* 48k, N=16, amp=10 */
-        {-2.0833916664123535156, 3.0418450832366943359, -3.2047898769378662109, 2.7571926116943359375,
-            -1.4978630542755126953, 0.3427594602108001709, 0.71733748912811279297, -1.0737057924270629883,
-            1.0225815773010253906, -0.56649994850158691406, 0.20968692004680633545, 0.065378531813621520996,
-            -0.10322438180446624756, 0.067442022264003753662, 0.00495197344571352005,}, /* 44.1k, N=15, amp=9 */};
-
-    private static int RINT(double x) {
-        return ((x) >= 0 ? ((int) ((x) + 0.5)) : ((int) ((x) - 0.5)));
+class JavaSSRC {
+    //    private static final java.util.logging.Logger Log = java.util.logging.Logger.getLogger("JavaSSRC");
+    interface ProgressListener {
+        fun onChanged(progress: Double)
+        fun onShowMessage(message: String?)
     }
 
-    private static final double[] noiseAmpPresets = new double[]{0.7, 0.9, 0.18};
+    private var listener: ProgressListener? = null
+    private var srcChannels = 2
+    private var dstChannels = 2
+    private var monoChannel = -1
+    private var srcByteOrder: ByteOrder = ByteOrder.LITTLE_ENDIAN
+    private var srcBPS = 16
+    private var dstBPS = 16
+    private var srcSamplingRate = 44100
+    private var dstSamplingRate = 44100
+    private var gain = 1.0
+    private var ditherType = 0
+    private var pdfType = 0
+    private var noiseAmplitude = 0.18
+    private var twoPass = false
+    private var normalize = false
+    private var fast = false
+    private var srcFloat = false
+    private var dstFloat = false
+    private var tempFilename: String? = null
+    private var fft: FFT = VaviSoundFFT()
 
-    private static final int POOLSIZE = 97;
+    private var rCtx: ResampleContext? = null
 
-    private final static double NORMALIZE_FACTOR_8 = 1 / (double) 0x7f;
-    private final static double NORMALIZE_FACTOR_16 = 1 / (double) 0x7fff;
-    private final static double NORMALIZE_FACTOR_24 = 1 / (double) 0x7fffff;
-    private final static double NORMALIZE_FACTOR_32 = 1 / (double) 0x7fffffff;
+    private class ResampleContext {
+        var rnch: Int = 2
+        var mono: Int = -1
+        var nch: Int = 2
+        var dnch: Int = 2
+        var bps: Int = 16
+        var dbps: Int = 16
+        var sfrq: Int = 44100
+        var dfrq: Int = 44100
+        var gain: Double = 1.0
+        var dither: Int = 0
+        var pdf: Int = 0
+        var noiseamp: Double = 0.18
+        var twopass: Boolean = false
+        var normalize: Boolean = false
+        var srcFloat: Boolean = false
+        var dstFloat: Boolean = false
+        var AA: Double = 170.0 /* stop band attenuation(dB) */
 
-    private ProgressListener listener = null;
-    private int srcChannels = 2;
-    private int dstChannels = 2;
-    private int monoChannel = -1;
-    private ByteOrder srcByteOrder = ByteOrder.LITTLE_ENDIAN;
-    private int srcBPS = 16;
-    private int dstBPS = 16;
-    private int srcSamplingRate = 44100;
-    private int dstSamplingRate = 44100;
-    private double gain = 1f;
-    private int ditherType = 0;
-    private int pdfType = 0;
-    private double noiseAmplitude = 0.18f;
-    private boolean twoPass = false;
-    private boolean normalize = false;
-    private boolean fast = false;
-    private boolean srcFloat = false;
-    private boolean dstFloat = false;
-    private String tempFilename = null;
-    private FFT fft = new VaviSoundFFT();
+        var DF: Double = 100.0
+        var FFTFIRLEN: Int = 65536
+        var ditherSample: Int = 0
+        var srcByteOrder: ByteOrder = ByteOrder.LITTLE_ENDIAN
+        var tmpFn: String? = null
+        var fft: FFT? = null
+        var shapebuf: Array<DoubleArray> = emptyArray()
+        var shaper_type: Int = 0
+        var shaper_len: Int = 0
+        var shaper_clipmin: Int = 0
+        var shaper_clipmax: Int = 0
+        var randbuf: DoubleArray = doubleArrayOf()
+        var randptr: Int = 0
+        var outBytes: ByteArray? = null
 
-    private ResampleContext rCtx = null;
+        var bpf: Int = 0
+        var wbpf: Int = 0
+        var sfrqfrqgcd: Int = 0
+        var fs1sfrq: Int = 0
+        var fs2fs1: Int = 0
+        var fs2dfrq: Int = 0
 
-    private static class ResampleContext {
-
-        protected int rnch = 2;
-        protected int mono = -1;
-        protected int nch = 2;
-        protected int dnch = 2;
-        protected int bps = 16;
-        protected int dbps = 16;
-        protected int sfrq = 44100;
-        protected int dfrq = 44100;
-        protected double gain = 1f;
-        protected int dither = 0;
-        protected int pdf = 0;
-        protected double noiseamp = 0.18f;
-        protected boolean twopass = false;
-        protected boolean normalize = false;
-        protected boolean srcFloat = false;
-        protected boolean dstFloat = false;
-        protected double AA = 170; /* stop band attenuation(dB) */
-
-        protected double DF = 100;
-        protected int FFTFIRLEN = 65536;
-        protected int ditherSample = 0;
-        protected ByteOrder srcByteOrder = ByteOrder.LITTLE_ENDIAN;
-        protected String tmpFn = null;
-        protected FFT fft;
-        protected double[][] shapebuf;
-        protected int shaper_type, shaper_len, shaper_clipmin, shaper_clipmax;
-        protected double[] randbuf;
-        protected int randptr = 0;
-        protected byte[] outBytes = null;
-
-        int bpf;
-        int wbpf;
-        int sfrqfrqgcd;
-        int fs1sfrq;
-        int fs2fs1;
-        int fs2dfrq;
-
-        int osf;
-        int fs1, fs2;
-        int n1, n2;
-        int nx, ny, nb, nb2;
-        int[] fOrder, fInc;
-        double[] stageA;
-        double[][] stageB;
-        byte[] rawinbuf, rawoutbuf;
-        ByteBuffer inBuffer, outBuffer;
-        double[] inbuf, outbuf;
-        double[][] buf1, buf2;
-        int frqgcd;
-        int ip;
-        int inbuflen = 0;
-        int sp = 0;
-        int rps = 0;
-        int ds = 0;
-        int rp = 0;
-        int delay = 0;
-        int osc = 0;
-        double peak = 0;
-        long sumread = 0;
-        long sumwrite = 0;
-        boolean init = true;
+        var osf: Int = 0
+        var fs1: Int = 0
+        var fs2: Int = 0
+        var n1: Int = 0
+        var n2: Int = 0
+        var nx: Int = 0
+        var ny: Int = 0
+        var nb: Int = 0
+        var nb2: Int = 0
+        var fOrder: IntArray = intArrayOf()
+        var fInc: IntArray = intArrayOf()
+        var stageA: DoubleArray = doubleArrayOf()
+        var stageB: Array<DoubleArray> = emptyArray()
+        var rawinbuf: ByteArray = byteArrayOf()
+        var rawoutbuf: ByteArray = byteArrayOf()
+        var inBuffer: ByteBuffer? = null
+        var outBuffer: ByteBuffer? = null
+        var inbuf: DoubleArray = doubleArrayOf()
+        var outbuf: DoubleArray = doubleArrayOf()
+        var buf1: Array<DoubleArray> = emptyArray()
+        var buf2: Array<DoubleArray> = emptyArray()
+        var frqgcd: Int = 0
+        var ip: Int = 0
+        var inbuflen: Int = 0
+        var sp: Int = 0
+        var rps: Int = 0
+        var ds: Int = 0
+        var rp: Int = 0
+        var delay: Int = 0
+        var osc: Int = 0
+        var peak: Double = 0.0
+        var sumread: Long = 0
+        var sumwrite: Long = 0
+        var init: Boolean = true
     }
 
-    private static void reset(ResampleContext rCtx) {
-        rCtx.init = true;
-        rCtx.sumread = rCtx.sumwrite = 0;
-        rCtx.sp = rCtx.rp = rCtx.rps = rCtx.ds = rCtx.osc = 0;
-        rCtx.peak = 0;
+    val outBytes: ByteArray
+        get() = rCtx!!.outBytes!!
 
-        rCtx.fft.reset();
-        rCtx.fft.realDFT(rCtx.stageA);
-
-        for (int i = 0; i < rCtx.nch; i++) {
-            Arrays.fill(rCtx.buf1[i], 0);
-            Arrays.fill(rCtx.buf2[i], 0);
+    val peak: Double
+        get() {
+            if (rCtx == null) {
+                return 0.0
+            }
+            return rCtx!!.peak
         }
-        rCtx.inBuffer.clear();
-        rCtx.outBuffer.clear();
 
-        if (rCtx.sfrq < rCtx.dfrq) {
-            rCtx.inbuflen = rCtx.n1 / 2 / (rCtx.fs1 / rCtx.sfrq) + 1;
-            rCtx.delay = (int) ((double) rCtx.n2 / 2 / (rCtx.fs2 / rCtx.dfrq));
-        } else if (rCtx.sfrq > rCtx.dfrq) {
-            rCtx.inbuflen = 0;
-            rCtx.delay = (int) ((double) rCtx.n1 / 2 / ((double) rCtx.fs1 / rCtx.dfrq) + (double) rCtx.n2 / 2 / ((double) rCtx.fs2 / rCtx.dfrq));
-        }
+    fun setOnProgressListener(listener: ProgressListener?) {
+        this.listener = listener
     }
 
-    public byte[] getOutBytes() {
-        return rCtx.outBytes;
+    fun setFastProfile(fast: Boolean) {
+        this.fast = fast
     }
 
-    public double getPeak() {
-        if (rCtx == null) {
-            return 0;
-        }
-        return rCtx.peak;
+    fun setSrcChannels(numChannels: Int) {
+        this.srcChannels = numChannels
     }
 
-    public void setOnProgressListener(ProgressListener listener) {
-        this.listener = listener;
+    fun setDstChannels(numChannels: Int) {
+        this.dstChannels = numChannels
     }
 
-    public void setFastProfile(boolean fast) {
-        this.fast = fast;
+    fun setMonoChannel(channel: Int) {
+        this.monoChannel = channel
     }
 
-    public void setSrcChannels(int numChannels) {
-        this.srcChannels = numChannels;
+    fun setSrcByteOrder(bo: ByteOrder) {
+        this.srcByteOrder = bo
     }
 
-    public void setDstChannels(int numChannels) {
-        this.dstChannels = numChannels;
+    fun setSrcBPS(srcBPS: Int) {
+        require(!(srcBPS != 8 && srcBPS != 16 && srcBPS != 24 && srcBPS != 32)) { "Src BPS type must be 8, 16, 24, or 32 bits (input: $srcBPS)" }
+        this.srcBPS = srcBPS
     }
 
-    public void setMonoChannel(int channel) {
-        this.monoChannel = channel;
+    fun setDstBPS(dstBPS: Int) {
+        require(!(dstBPS != 8 && dstBPS != 16 && dstBPS != 24)) { "Dst BPS type must be 8, 16, or 24 bits (input: $dstBPS)" }
+        this.dstBPS = dstBPS
     }
 
-    public void setSrcByteOrder(ByteOrder bo) {
-        this.srcByteOrder = bo;
+    fun setSrcSamplingRate(srcSamplingRate: Int) {
+        this.srcSamplingRate = srcSamplingRate
     }
 
-    public void setSrcBPS(int srcBPS) {
-        if (srcBPS != 8 && srcBPS != 16 && srcBPS != 24 && srcBPS != 32) {
-            throw new IllegalArgumentException("Src BPS type must be 8, 16, 24, or 32 bits (input: " + srcBPS + ")");
-        }
-        this.srcBPS = srcBPS;
+    fun setDstSamplingRate(dstSamplingRate: Int) {
+        this.dstSamplingRate = dstSamplingRate
     }
 
-    public void setDstBPS(int dstBPS) {
-        if (dstBPS != 8 && dstBPS != 16 && dstBPS != 24) {
-            throw new IllegalArgumentException("Dst BPS type must be 8, 16, or 24 bits (input: " + dstBPS + ")");
-        }
-        this.dstBPS = dstBPS;
+    fun setAttenuation(attenuation: Double) {
+        this.gain = dBToGain(-attenuation)
     }
 
-    public void setSrcSamplingRate(int srcSamplingRate) {
-        this.srcSamplingRate = srcSamplingRate;
+    fun setGain(gain: Double) {
+        this.gain = gain
     }
 
-    public void setDstSamplingRate(int dstSamplingRate) {
-        this.dstSamplingRate = dstSamplingRate;
+    fun setDitherType(ditherType: Int) {
+        require(!(ditherType < 0 || ditherType > 4)) { "Dither type must be 0, 1, 2, 3, or 4" }
+        this.ditherType = ditherType
     }
 
-    public void setAttenuation(double attenuation) {
-        this.gain = dBToGain(-attenuation);
+    fun setPdfType(pdfType: Int) {
+        require(!(pdfType < 0 || pdfType > 2)) { "PDF type must be 0, 1, or 2" }
+        this.pdfType = pdfType
+        this.noiseAmplitude = noiseAmpPresets[pdfType]
     }
 
-    public void setGain(double gain) {
-        this.gain = gain;
+    fun setNoiseAmplitude(noiseAmplitude: Double) {
+        this.noiseAmplitude = noiseAmplitude
     }
 
-    public void setDitherType(int ditherType) {
-        if (ditherType < 0 || ditherType > 4) {
-            throw new IllegalArgumentException("Dither type must be 0, 1, 2, 3, or 4");
-        }
-        this.ditherType = ditherType;
-    }
-
-    public void setPdfType(int pdfType) {
-        if (pdfType < 0 || pdfType > 2) {
-            throw new IllegalArgumentException("PDF type must be 0, 1, or 2");
-        }
-        this.pdfType = pdfType;
-        this.noiseAmplitude = noiseAmpPresets[pdfType];
-    }
-
-    public void setNoiseAmplitude(double noiseAmplitude) {
-        this.noiseAmplitude = noiseAmplitude;
-    }
-
-    public boolean isTwoPass() {
+    fun isTwoPass(): Boolean {
         if (rCtx != null) {
-            return rCtx.twopass;
+            return rCtx!!.twopass
         }
-        return this.twoPass;
+        return this.twoPass
     }
 
-    public void setTwoPass(boolean twoPass) {
-        this.twoPass = twoPass;
+    fun setTwoPass(twoPass: Boolean) {
+        this.twoPass = twoPass
     }
 
-    public void setNormalize(boolean normalize) {
-        this.normalize = normalize;
+    fun setNormalize(normalize: Boolean) {
+        this.normalize = normalize
     }
 
-    public void setSrcFloat(boolean srcFloat) {
-        this.srcFloat = srcFloat;
+    fun setSrcFloat(srcFloat: Boolean) {
+        this.srcFloat = srcFloat
     }
 
-    public boolean isSrcFloat() {
+    fun isSrcFloat(): Boolean {
         if (rCtx != null) {
-            return rCtx.srcFloat;
+            return rCtx!!.srcFloat
         }
-        return this.srcFloat;
+        return this.srcFloat
     }
 
-    public void setDstFloat(boolean dstFloat) {
-        this.dstFloat = dstFloat;
+    fun setDstFloat(dstFloat: Boolean) {
+        this.dstFloat = dstFloat
     }
 
-    public boolean isDstFloat() {
+    fun isDstFloat(): Boolean {
         if (rCtx != null) {
-            return rCtx.dstFloat;
+            return rCtx!!.dstFloat
         }
-        return this.dstFloat;
+        return this.dstFloat
     }
 
-    public void setTempFilename(String tempFilename) {
-        this.tempFilename = tempFilename;
+    fun setTempFilename(tempFilename: String?) {
+        this.tempFilename = tempFilename
     }
 
-    public void setFFT(FFT fft){
-        this.fft = fft;
+    fun setFFT(fft: FFT) {
+        this.fft = fft
     }
 
-    public void initialize() {
-        rCtx = new ResampleContext();
-        rCtx.fft = fft;
-        rCtx.rnch = srcChannels;
-        rCtx.mono = monoChannel < srcChannels ? monoChannel : srcChannels - 1;
-        if (rCtx.rnch > 1 && rCtx.mono > -1) {
-            rCtx.nch = 1;
+    fun initialize() {
+        rCtx = ResampleContext()
+        rCtx!!.fft = fft
+        rCtx!!.rnch = srcChannels
+        rCtx!!.mono = if (monoChannel < srcChannels) monoChannel else srcChannels - 1
+        if (rCtx!!.rnch > 1 && rCtx!!.mono > -1) {
+            rCtx!!.nch = 1
         } else {
-            rCtx.nch = rCtx.rnch;
+            rCtx!!.nch = rCtx!!.rnch
         }
-        rCtx.dnch = dstChannels;
-        rCtx.srcByteOrder = srcByteOrder;
-        rCtx.bps = srcBPS / 8;
-        rCtx.dbps = dstBPS / 8;
-        rCtx.sfrq = srcSamplingRate;
-        rCtx.dfrq = dstSamplingRate;
-        rCtx.gain = gain;
-        rCtx.srcFloat = srcFloat;
-        if (rCtx.srcFloat) {
-            rCtx.bps = 4;
+        rCtx!!.dnch = dstChannels
+        rCtx!!.srcByteOrder = srcByteOrder
+        rCtx!!.bps = srcBPS / 8
+        rCtx!!.dbps = dstBPS / 8
+        rCtx!!.sfrq = srcSamplingRate
+        rCtx!!.dfrq = dstSamplingRate
+        rCtx!!.gain = gain
+        rCtx!!.srcFloat = srcFloat
+        if (rCtx!!.srcFloat) {
+            rCtx!!.bps = 4
         }
-        rCtx.dstFloat = dstFloat;
-        if (rCtx.dstFloat) {
-            rCtx.dbps = 3;
+        rCtx!!.dstFloat = dstFloat
+        if (rCtx!!.dstFloat) {
+            rCtx!!.dbps = 3
         }
-        if (rCtx.bps == rCtx.dbps || rCtx.srcFloat == rCtx.dstFloat) {
-            rCtx.dither = 0;
+        if (rCtx!!.bps == rCtx!!.dbps || rCtx!!.srcFloat == rCtx!!.dstFloat) {
+            rCtx!!.dither = 0
         } else {
-            rCtx.dither = ditherType;
+            rCtx!!.dither = ditherType
         }
-        rCtx.pdf = pdfType;
-        rCtx.noiseamp = noiseAmplitude;
-        rCtx.normalize = normalize;
-        rCtx.twopass = !(rCtx.sfrq == rCtx.dfrq && rCtx.dither == 0 && rCtx.gain == 1) && (rCtx.normalize || twoPass);
-        rCtx.tmpFn = tempFilename;
+        rCtx!!.pdf = pdfType
+        rCtx!!.noiseamp = noiseAmplitude
+        rCtx!!.normalize = normalize
+        rCtx!!.twopass =
+            !(rCtx!!.sfrq == rCtx!!.dfrq && rCtx!!.dither == 0 && rCtx!!.gain == 1.0) && (rCtx!!.normalize || twoPass)
+        rCtx!!.tmpFn = tempFilename
         if (fast) {
-            rCtx.AA = 96;
-            rCtx.DF = 8000;
-            rCtx.FFTFIRLEN = 1024;
+            rCtx!!.AA = 96.0
+            rCtx!!.DF = 8000.0
+            rCtx!!.FFTFIRLEN = 1024
         } else {
-            rCtx.AA = 170;
-            rCtx.DF = 100;
-            rCtx.FFTFIRLEN = 65536;
+            rCtx!!.AA = 170.0
+            rCtx!!.DF = 100.0
+            rCtx!!.FFTFIRLEN = 65536
         }
 
-        if (rCtx.dither > 0) {
-            init_shaper();
+        if (rCtx!!.dither > 0) {
+            init_shaper()
         }
 
-        rCtx.bpf = rCtx.bps * rCtx.rnch;
-        rCtx.wbpf = rCtx.bps * (rCtx.twopass ? rCtx.nch : rCtx.dnch);
-        if (rCtx.sfrq < rCtx.dfrq) {
-            initUpSample(rCtx);
-        } else if (rCtx.sfrq > rCtx.dfrq) {
-            initDownSample(rCtx);
+        rCtx!!.bpf = rCtx!!.bps * rCtx!!.rnch
+        rCtx!!.wbpf = rCtx!!.bps * (if (rCtx!!.twopass) rCtx!!.nch else rCtx!!.dnch)
+        if (rCtx!!.sfrq < rCtx!!.dfrq) {
+            initUpSample(rCtx!!)
+        } else if (rCtx!!.sfrq > rCtx!!.dfrq) {
+            initDownSample(rCtx!!)
         } else {
-            int outBps = rCtx.dstFloat ? 4 : rCtx.dbps;
-            rCtx.rawinbuf = new byte[16384 * rCtx.bpf];
-            if (rCtx.twopass) {
-                rCtx.rawoutbuf = new byte[16384 * 8 * rCtx.nch];
+            val outBps = if (rCtx!!.dstFloat) 4 else rCtx!!.dbps
+            rCtx!!.rawinbuf = ByteArray(16384 * rCtx!!.bpf)
+            if (rCtx!!.twopass) {
+                rCtx!!.rawoutbuf = ByteArray(16384 * 8 * rCtx!!.nch)
             } else {
 //                rCtx.rawoutbuf = new byte[(int) (16384 * outBps * rCtx.dnch * ((double) outBps / rCtx.bps))];
-                rCtx.rawoutbuf = new byte[16384 * outBps * rCtx.dnch];
+                rCtx!!.rawoutbuf = ByteArray(16384 * outBps * rCtx!!.dnch)
             }
-            rCtx.inBuffer = ByteBuffer.wrap(rCtx.rawinbuf).order(rCtx.srcByteOrder);
-            rCtx.outBuffer = ByteBuffer.wrap(rCtx.rawoutbuf).order(ByteOrder.LITTLE_ENDIAN);
-            rCtx.outBytes = new byte[rCtx.rawoutbuf.length];
+            rCtx!!.inBuffer = ByteBuffer.wrap(rCtx!!.rawinbuf).order(rCtx!!.srcByteOrder)
+            rCtx!!.outBuffer = ByteBuffer.wrap(rCtx!!.rawoutbuf).order(ByteOrder.LITTLE_ENDIAN)
+            rCtx!!.outBytes = ByteArray(rCtx!!.rawoutbuf.size)
         }
     }
 
-    private void init_shaper() {
-        int i;
-        int[] pool = new int[POOLSIZE];
+    private fun init_shaper() {
+        var i: Int
+        val pool = IntArray(POOLSIZE)
 
-        for (i = 1; i < 6; i++) {
-            if (rCtx.dfrq == scoeffreq[i]) {
-                break;
+        i = 1
+        while (i < 6) {
+            if (rCtx!!.dfrq == scoeffreq[i]) {
+                break
             }
+            i++
         }
-        if ((rCtx.dither == 3 || rCtx.dither == 4) && i == 6) {
-            showMessage(String.format("Warning: ATH based noise shaping for destination frequency %dHz is not available, using triangular dither", rCtx.dfrq));
+        if ((rCtx!!.dither == 3 || rCtx!!.dither == 4) && i == 6) {
+            showMessage(
+                String.format(
+                    "Warning: ATH based noise shaping for destination frequency %dHz is not available, using triangular dither",
+                    rCtx!!.dfrq
+                )
+            )
         }
-        if (rCtx.dither == 2 || i == 6) {
-            i = 0;
+        if (rCtx!!.dither == 2 || i == 6) {
+            i = 0
         }
-        if (rCtx.dither == 4 && (i == 1 || i == 2)) {
-            i += 5;
-        }
-
-        rCtx.shaper_type = i;
-
-        rCtx.shaper_len = scoeflen[rCtx.shaper_type];
-        rCtx.shapebuf = new double[rCtx.nch][rCtx.shaper_len];
-
-        if (rCtx.dbps == 1) {
-            rCtx.shaper_clipmin = -0x80;
-            rCtx.shaper_clipmax = 0x7f;
-        }
-        if (rCtx.dbps == 2) {
-            rCtx.shaper_clipmin = -0x8000;
-            rCtx.shaper_clipmax = 0x7fff;
-        }
-        if (rCtx.dbps == 3) {
-            rCtx.shaper_clipmin = -0x800000;
-            rCtx.shaper_clipmax = 0x7fffff;
-        }
-        if (rCtx.dbps == 4) {
-            rCtx.shaper_clipmin = -0x80000000;
-            rCtx.shaper_clipmax = 0x7fffffff;
+        if (rCtx!!.dither == 4 && (i == 1 || i == 2)) {
+            i += 5
         }
 
-        rCtx.randbuf = new double[RANDBUFLEN];
-        Random random = new Random(System.nanoTime());
+        rCtx!!.shaper_type = i
 
-        for (i = 0; i < POOLSIZE; i++) {
-            pool[i] = random.nextInt(Integer.MAX_VALUE);
+        rCtx!!.shaper_len = scoeflen[rCtx!!.shaper_type]
+        rCtx!!.shapebuf = Array(rCtx!!.nch) { DoubleArray(rCtx!!.shaper_len) }
+
+        if (rCtx!!.dbps == 1) {
+            rCtx!!.shaper_clipmin = -0x80
+            rCtx!!.shaper_clipmax = 0x7f
+        }
+        if (rCtx!!.dbps == 2) {
+            rCtx!!.shaper_clipmin = -0x8000
+            rCtx!!.shaper_clipmax = 0x7fff
+        }
+        if (rCtx!!.dbps == 3) {
+            rCtx!!.shaper_clipmin = -0x800000
+            rCtx!!.shaper_clipmax = 0x7fffff
+        }
+        if (rCtx!!.dbps == 4) {
+            rCtx!!.shaper_clipmin = -0x80000000
+            rCtx!!.shaper_clipmax = 0x7fffffff
         }
 
-        int r1, r2, p;
-        double r;
+        rCtx!!.randbuf = DoubleArray(RANDBUFLEN)
+        val random = Random(System.nanoTime())
 
-        switch (rCtx.pdf) {
-            case 0: // rectangular
-                for (i = 0; i < RANDBUFLEN; i++) {
-                    p = random.nextInt(Integer.MAX_VALUE) % POOLSIZE;
-                    r1 = pool[p];
-                    pool[p] = random.nextInt(Integer.MAX_VALUE);
-                    rCtx.randbuf[i] = rCtx.noiseamp * (((double) r1) / Integer.MAX_VALUE - 0.5);
+        i = 0
+        while (i < POOLSIZE) {
+            pool[i] = random.nextInt(Int.MAX_VALUE)
+            i++
+        }
+
+        var r1: Int
+        var r2: Int
+        var p: Int
+        var r: Double
+
+        when (rCtx!!.pdf) {
+            0 -> {
+                i = 0
+                while (i < RANDBUFLEN) {
+                    p = random.nextInt(Int.MAX_VALUE) % POOLSIZE
+                    r1 = pool[p]
+                    pool[p] = random.nextInt(Int.MAX_VALUE)
+                    rCtx!!.randbuf[i] = rCtx!!.noiseamp * ((r1.toDouble()) / Int.MAX_VALUE - 0.5)
+                    i++
                 }
-                break;
-            case 1: // triangular
-                for (i = 0; i < RANDBUFLEN; i++) {
-                    p = random.nextInt(Integer.MAX_VALUE) % POOLSIZE;
-                    r1 = pool[p];
-                    pool[p] = random.nextInt(Integer.MAX_VALUE);
-                    p = random.nextInt(Integer.MAX_VALUE) % POOLSIZE;
-                    r2 = pool[p];
-                    pool[p] = random.nextInt(Integer.MAX_VALUE);
-                    rCtx.randbuf[i] = rCtx.noiseamp * ((((double) r1) / Integer.MAX_VALUE) - (((double) r2) / Integer.MAX_VALUE));
-                }
-                break;
-            case 2: // gaussian
-                int sw = 0;
-                double t = 0,
-                 u = 0;
+            }
 
-                for (i = 0; i < RANDBUFLEN; i++) {
+            1 -> {
+                i = 0
+                while (i < RANDBUFLEN) {
+                    p = random.nextInt(Int.MAX_VALUE) % POOLSIZE
+                    r1 = pool[p]
+                    pool[p] = random.nextInt(Int.MAX_VALUE)
+                    p = random.nextInt(Int.MAX_VALUE) % POOLSIZE
+                    r2 = pool[p]
+                    pool[p] = random.nextInt(Int.MAX_VALUE)
+                    rCtx!!.randbuf[i] =
+                        rCtx!!.noiseamp * (((r1.toDouble()) / Int.MAX_VALUE) - ((r2.toDouble()) / Int.MAX_VALUE))
+                    i++
+                }
+            }
+
+            2 -> {
+                var sw = 0
+                var t = 0.0
+                var u = 0.0
+
+                i = 0
+                while (i < RANDBUFLEN) {
                     if (sw == 0) {
-                        sw = 1;
+                        sw = 1
 
-                        p = random.nextInt(Integer.MAX_VALUE) % POOLSIZE;
-                        r = ((double) pool[p]) / Integer.MAX_VALUE;
-                        pool[p] = random.nextInt(Integer.MAX_VALUE);
+                        p = random.nextInt(Int.MAX_VALUE) % POOLSIZE
+                        r = (pool[p].toDouble()) / Int.MAX_VALUE
+                        pool[p] = random.nextInt(Int.MAX_VALUE)
                         if (r == 1.0) {
-                            r = 0.0;
+                            r = 0.0
                         }
 
-                        t = Math.sqrt(-2 * Math.log(1 - r));
+                        t = sqrt(-2 * ln(1 - r))
 
-                        p = random.nextInt(Integer.MAX_VALUE) % POOLSIZE;
-                        r = ((double) pool[p]) / Integer.MAX_VALUE;
-                        pool[p] = random.nextInt(Integer.MAX_VALUE);
+                        p = random.nextInt(Int.MAX_VALUE) % POOLSIZE
+                        r = (pool[p].toDouble()) / Int.MAX_VALUE
+                        pool[p] = random.nextInt(Int.MAX_VALUE)
 
-                        u = 2 * Math.PI * r;
+                        u = 2 * Math.PI * r
 
-                        rCtx.randbuf[i] = rCtx.noiseamp * t * Math.cos(u);
+                        rCtx!!.randbuf[i] = rCtx!!.noiseamp * t * cos(u)
                     } else {
-                        sw = 0;
-                        rCtx.randbuf[i] = rCtx.noiseamp * t * Math.sin(u);
+                        sw = 0
+                        rCtx!!.randbuf[i] = rCtx!!.noiseamp * t * sin(u)
                     }
+                    i++
                 }
-                break;
+            }
         }
 
-        rCtx.randptr = 0;
+        rCtx!!.randptr = 0
 
-        if (rCtx.dither == 0 || rCtx.dither == 1) {
-            rCtx.ditherSample = 1;
+        if (rCtx!!.dither == 0 || rCtx!!.dither == 1) {
+            rCtx!!.ditherSample = 1
         } else {
-            rCtx.ditherSample = samp[rCtx.shaper_type];
+            rCtx!!.ditherSample = samp[rCtx!!.shaper_type]
         }
     }
 
-    private void showProgress(double p) {
+    private fun showProgress(p: Double) {
         if (listener != null) {
-            listener.onChanged(p);
+            listener!!.onChanged(p)
         }
     }
 
-    private void showMessage(String msg) {
+    private fun showMessage(msg: String) {
         if (listener != null) {
-            listener.onShowMessage(msg);
+            listener!!.onShowMessage(msg)
         }
     }
 
-    private static void initUpSample(ResampleContext rCtx) {
-        int filter2len = rCtx.FFTFIRLEN; /* stage 2 filter length */
-
-        /* Make stage 1 filter */
-
-        double lpf, d, df, alp, iza;
-        double guard = 2;
-        int i;
-
-        rCtx.frqgcd = gcd(rCtx.sfrq, rCtx.dfrq);
-
-        rCtx.fs1 = rCtx.sfrq / rCtx.frqgcd * rCtx.dfrq;
-
-        rCtx.sfrqfrqgcd = rCtx.sfrq / rCtx.frqgcd;
-        rCtx.fs1sfrq = rCtx.fs1 / rCtx.sfrq;
-
-        if (rCtx.fs1 / rCtx.dfrq == 1) {
-            rCtx.osf = 1;
-        } else if (rCtx.fs1 / rCtx.dfrq % 2 == 0) {
-            rCtx.osf = 2;
-        } else if (rCtx.fs1 / rCtx.dfrq % 3 == 0) {
-            rCtx.osf = 3;
-        } else {
-            throw new UnsupportedOperationException(String.format("Resampling from %dHz to %dHz is not supported.\n"
-                    + "%d/gcd(%d,%d)=%d must be divisible by 2 or 3.",
-                    rCtx.sfrq, rCtx.dfrq, rCtx.sfrq, rCtx.sfrq, rCtx.dfrq, rCtx.fs1 / rCtx.dfrq));
-        }
-
-        df = (rCtx.dfrq * rCtx.osf / 2 - rCtx.sfrq / 2) * 2 / guard;
-        lpf = rCtx.sfrq / 2 + (rCtx.dfrq * rCtx.osf / 2 - rCtx.sfrq / 2) / guard;
-
-        if (rCtx.AA <= 21) {
-            d = 0.9222;
-        } else {
-            d = (rCtx.AA - 7.95) / 14.36;
-        }
-
-        rCtx.n1 = (int) (rCtx.fs1 / df * d + 1);
-        if (rCtx.n1 % 2 == 0) {
-            rCtx.n1++;
-        }
-
-        alp = alpha(rCtx);
-        iza = I0Bessel.value(alp);
-        //printf("iza = %g\n",iza);
-
-        rCtx.ny = rCtx.fs1 / rCtx.sfrq;
-        rCtx.nx = rCtx.n1 / rCtx.ny + 1;
-
-        rCtx.fOrder = new int[rCtx.ny * rCtx.osf];
-        for (i = 0; i < rCtx.ny * rCtx.osf; i++) {
-            rCtx.fOrder[i] = rCtx.fs1 / rCtx.sfrq - (i * (rCtx.fs1 / (rCtx.dfrq * rCtx.osf))) % (rCtx.fs1 / rCtx.sfrq);
-            if (rCtx.fOrder[i] == rCtx.fs1 / rCtx.sfrq) {
-                rCtx.fOrder[i] = 0;
-            }
-        }
-
-        rCtx.fInc = new int[rCtx.ny * rCtx.osf];
-        for (i = 0; i < rCtx.ny * rCtx.osf; i++) {
-            rCtx.fInc[i] = rCtx.fOrder[i] < rCtx.fs1 / (rCtx.dfrq * rCtx.osf) ? rCtx.nch : 0;
-            if (rCtx.fOrder[i] == rCtx.fs1 / rCtx.sfrq) {
-                rCtx.fOrder[i] = 0;
-            }
-        }
-
-        rCtx.stageB = new double[rCtx.ny][rCtx.nx];
-
-        for (i = -(rCtx.n1 / 2); i <= rCtx.n1 / 2; i++) {
-            rCtx.stageB[(i + rCtx.n1 / 2) % rCtx.ny][(i + rCtx.n1 / 2) / rCtx.ny] = win(i, rCtx.n1, alp, iza) * hn_lpf(i, lpf, rCtx.fs1) * rCtx.fs1 / rCtx.sfrq;
-        }
-
-        /* Make stage 2 filter */
-        int ipsize, wsize;
-
-        if (rCtx.AA <= 21) {
-            d = 0.9222;
-        } else {
-            d = (rCtx.AA - 7.95) / 14.36;
-        }
-
-        rCtx.fs2 = rCtx.dfrq * rCtx.osf;
-
-        for (i = 1;; i = i * 2) {
-            rCtx.n2 = filter2len * i;
-            if (rCtx.n2 % 2 == 0) {
-                rCtx.n2--;
-            }
-            df = (rCtx.fs2 * d) / (rCtx.n2 - 1);
-            lpf = rCtx.sfrq / 2;
-            if (df < rCtx.DF) {
-                break;
-            }
-        }
-
-        alp = alpha(rCtx);
-
-        iza = I0Bessel.value(alp);
-
-        //noinspection StatementWithEmptyBody
-        for (rCtx.nb = 1; rCtx.nb < rCtx.n2; rCtx.nb *= 2);
-        rCtx.nb *= 2;
-
-        rCtx.stageA = new double[rCtx.nb];
-
-        for (i = -(rCtx.n2 / 2); i <= rCtx.n2 / 2; i++) {
-            rCtx.stageA[i + rCtx.n2 / 2] = win(i, rCtx.n2, alp, iza) * hn_lpf(i, lpf, rCtx.fs2) / rCtx.nb * 2;
-        }
-
-        rCtx.fft.init(rCtx.nb);
-        rCtx.fft.realDFT(rCtx.stageA);
-
-        /* Apply filters */
-        rCtx.nb2 = rCtx.nb / 2;
-
-        rCtx.buf1 = new double[rCtx.nch][rCtx.nb2 / rCtx.osf + 1];
-        rCtx.buf2 = new double[rCtx.nch][rCtx.nb];
-
-        rCtx.rawinbuf = new byte[rCtx.rnch * (rCtx.nb2 + rCtx.nx) * rCtx.bps];
-
-        if (rCtx.twopass) {
-            rCtx.rawoutbuf = new byte[rCtx.nch * (rCtx.nb2 / rCtx.osf + 1) * 8];
-        } else {
-            rCtx.rawoutbuf = new byte[rCtx.dnch * (rCtx.nb2 / rCtx.osf + 1) * (rCtx.dstFloat ? 4 : rCtx.dbps)];
-        }
-
-        rCtx.inbuf = new double[rCtx.nch * (rCtx.nb2 + rCtx.nx)];
-        rCtx.outbuf = new double[rCtx.nch * (rCtx.nb2 / rCtx.osf + 1)];
-
-        rCtx.inbuflen = rCtx.n1 / 2 / (rCtx.fs1 / rCtx.sfrq) + 1;
-        rCtx.delay = (int) ((double) rCtx.n2 / 2 / (rCtx.fs2 / rCtx.dfrq));
-
-        rCtx.inBuffer = ByteBuffer.wrap(rCtx.rawinbuf).order(rCtx.srcByteOrder);
-        rCtx.outBuffer = ByteBuffer.wrap(rCtx.rawoutbuf).order(ByteOrder.LITTLE_ENDIAN);
-    }
-
-    private static void initDownSample(ResampleContext rCtx) {
-        int filter1len = rCtx.FFTFIRLEN; // stage 1 filter length 
-
-        // Make stage 1 filter 
-        double lpf, d, df, alp, iza;
-        int ipsize, wsize, i;
-
-        rCtx.frqgcd = gcd(rCtx.sfrq, rCtx.dfrq);
-
-        if (rCtx.dfrq / rCtx.frqgcd == 1) {
-            rCtx.osf = 1;
-        } else if (rCtx.dfrq / rCtx.frqgcd % 2 == 0) {
-            rCtx.osf = 2;
-        } else if (rCtx.dfrq / rCtx.frqgcd % 3 == 0) {
-            rCtx.osf = 3;
-        } else {
-            throw new UnsupportedOperationException(String.format("Resampling from %dHz to %dHz is not supported.\n"
-                    + "%d/gcd(%d,%d)=%d must be divisible by 2 or 3.",
-                    rCtx.sfrq, rCtx.dfrq, rCtx.dfrq, rCtx.sfrq, rCtx.dfrq, rCtx.dfrq / rCtx.frqgcd));
-        }
-
-        rCtx.fs1 = rCtx.sfrq * rCtx.osf;
-
-        if (rCtx.AA <= 21) {
-            d = 0.9222;
-        } else {
-            d = (rCtx.AA - 7.95) / 14.36;
-        }
-
-        rCtx.n1 = filter1len;
-        for (i = 1;; i = i * 2) {
-            rCtx.n1 = filter1len * i;
-            if (rCtx.n1 % 2 == 0) {
-                rCtx.n1--;
-            }
-            df = (rCtx.fs1 * d) / (rCtx.n1 - 1);
-            lpf = (rCtx.dfrq - df) / 2;
-            if (df < rCtx.DF) {
-                break;
-            }
-        }
-
-        alp = alpha(rCtx);
-
-        iza = I0Bessel.value(alp);
-
-        //noinspection StatementWithEmptyBody
-        for (rCtx.nb = 1; rCtx.nb < rCtx.n1; rCtx.nb *= 2) {
-        }
-        rCtx.nb *= 2;
-
-        rCtx.stageA = new double[rCtx.nb];
-
-        for (i = -(rCtx.n1 / 2); i <= rCtx.n1 / 2; i++) {
-            rCtx.stageA[i + rCtx.n1 / 2] = win(i, rCtx.n1, alp, iza) * hn_lpf(i, lpf, rCtx.fs1) * rCtx.fs1 / rCtx.sfrq / rCtx.nb * 2;
-        }
-
-        rCtx.fft.init(rCtx.nb);
-        rCtx.fft.realDFT(rCtx.stageA);
-
-        // Make stage 2 filter 
-        if (rCtx.osf == 1) {
-            rCtx.fs2 = rCtx.sfrq / rCtx.frqgcd * rCtx.dfrq;
-            rCtx.n2 = 1;
-            rCtx.ny = rCtx.nx = 1;
-            rCtx.fOrder = new int[rCtx.ny];
-            rCtx.fInc = new int[rCtx.ny];
-            rCtx.fInc[0] = rCtx.sfrq / rCtx.dfrq;
-            rCtx.stageB = new double[rCtx.ny][rCtx.nx];
-            rCtx.stageB[0][0] = 1;
-        } else {
-            double guard = 2;
-
-            rCtx.fs2 = rCtx.sfrq / rCtx.frqgcd * rCtx.dfrq;
-
-            df = (rCtx.fs1 / 2 - rCtx.sfrq / 2) * 2 / guard;
-            lpf = rCtx.sfrq / 2 + (rCtx.fs1 / 2 - rCtx.sfrq / 2) / guard;
-
-            if (rCtx.AA <= 21) {
-                d = 0.9222;
-            } else {
-                d = (rCtx.AA - 7.95) / 14.36;
-            }
-
-            rCtx.n2 = (int) (rCtx.fs2 / df * d + 1);
-            if (rCtx.n2 % 2 == 0) {
-                rCtx.n2++;
-            }
-
-            alp = alpha(rCtx);
-            iza = I0Bessel.value(alp);
-
-            rCtx.ny = rCtx.fs2 / rCtx.fs1; // 0�Ǥʤ�����ץ뤬fs2�ǲ�����ץ뤪���ˤ��뤫��
-            rCtx.nx = rCtx.n2 / rCtx.ny + 1;
-
-            rCtx.fOrder = new int[rCtx.ny];
-            for (i = 0; i < rCtx.ny; i++) {
-                rCtx.fOrder[i] = rCtx.fs2 / rCtx.fs1 - (i * (rCtx.fs2 / rCtx.dfrq)) % (rCtx.fs2 / rCtx.fs1);
-                if (rCtx.fOrder[i] == rCtx.fs2 / rCtx.fs1) {
-                    rCtx.fOrder[i] = 0;
-                }
-            }
-
-            rCtx.fInc = new int[rCtx.ny];
-            for (i = 0; i < rCtx.ny; i++) {
-                rCtx.fInc[i] = (rCtx.fs2 / rCtx.dfrq - rCtx.fOrder[i]) / (rCtx.fs2 / rCtx.fs1) + 1;
-                if (rCtx.fOrder[i + 1 == rCtx.ny ? 0 : i + 1] == 0) {
-                    rCtx.fInc[i]--;
-                }
-            }
-
-            rCtx.stageB = new double[rCtx.ny][rCtx.nx];
-            for (i = -(rCtx.n2 / 2); i <= rCtx.n2 / 2; i++) {
-                rCtx.stageB[(i + rCtx.n2 / 2) % rCtx.ny][(i + rCtx.n2 / 2) / rCtx.ny] = win(i, rCtx.n2, alp, iza) * hn_lpf(i, lpf, rCtx.fs2) * rCtx.fs2 / rCtx.fs1;
-            }
-        }
-
-        rCtx.fs2fs1 = rCtx.fs2 / rCtx.fs1;
-        rCtx.fs2dfrq = rCtx.fs2 / rCtx.dfrq;
-
-        rCtx.nb2 = rCtx.nb / 2;
-
-        rCtx.buf1 = new double[rCtx.nch][rCtx.nb];
-        rCtx.buf2 = new double[rCtx.nch][rCtx.nx + 1 + rCtx.nb2];
-
-        rCtx.rawinbuf = new byte[(rCtx.nb2 / rCtx.osf + rCtx.osf + 1) * rCtx.rnch * rCtx.bps];
-
-        if (rCtx.twopass) {
-            rCtx.rawoutbuf = new byte[(int) (((double) rCtx.nb2 * rCtx.sfrq / rCtx.dfrq + 1) * 8 * rCtx.nch)];
-        } else {
-            rCtx.rawoutbuf = new byte[(int) (((double) rCtx.nb2 * rCtx.sfrq / rCtx.dfrq + 1) * (rCtx.dstFloat ? 4 : rCtx.dbps) * rCtx.dnch)];
-        }
-
-        rCtx.inbuf = new double[rCtx.nch * (rCtx.nb2 / rCtx.osf + rCtx.osf + 1)];
-        rCtx.outbuf = new double[(int) (rCtx.nch * ((double) rCtx.nb2 * rCtx.sfrq / rCtx.dfrq + 1))];
-
-        rCtx.inBuffer = ByteBuffer.wrap(rCtx.rawinbuf).order(rCtx.srcByteOrder);
-        rCtx.outBuffer = ByteBuffer.wrap(rCtx.rawoutbuf).order(ByteOrder.LITTLE_ENDIAN);
-
-        rCtx.delay = (int) ((double) rCtx.n1 / 2 / ((double) rCtx.fs1 / rCtx.dfrq) + (double) rCtx.n2 / 2 / ((double) rCtx.fs2 / rCtx.dfrq));
-    }
-
-    private static int do_shaping(ResampleContext rCtx, double s, int ch) {
-        double u, h;
-        int i;
-
-        if (rCtx.dither == 1) {
-            s += rCtx.randbuf[rCtx.randptr++ & (RANDBUFLEN - 1)];
-
-            if (s < rCtx.shaper_clipmin) {
-                double d = s / rCtx.shaper_clipmin;
-                rCtx.peak = rCtx.peak < d ? d : rCtx.peak;
-                s = rCtx.shaper_clipmin;
-            }
-            if (s > rCtx.shaper_clipmax) {
-                double d = s / rCtx.shaper_clipmax;
-                rCtx.peak = rCtx.peak < d ? d : rCtx.peak;
-                s = rCtx.shaper_clipmax;
-            }
-
-            return RINT(s);
-        }
-
-        h = 0;
-        for (i = 0; i < rCtx.shaper_len; i++) {
-            h += shapercoefs[rCtx.shaper_type][i] * rCtx.shapebuf[ch][i];
-        }
-        s += h;
-        u = s;
-        s += rCtx.randbuf[rCtx.randptr++ & (RANDBUFLEN - 1)];
-
-        for (i = rCtx.shaper_len - 2; i >= 0; i--) {
-            rCtx.shapebuf[ch][i + 1] = rCtx.shapebuf[ch][i];
-        }
-
-        if (s < rCtx.shaper_clipmin) {
-            double d = s / rCtx.shaper_clipmin;
-            rCtx.peak = rCtx.peak < d ? d : rCtx.peak;
-            s = rCtx.shaper_clipmin;
-            rCtx.shapebuf[ch][0] = s - u;
-
-            if (rCtx.shapebuf[ch][0] > 1) {
-                rCtx.shapebuf[ch][0] = 1;
-            }
-            if (rCtx.shapebuf[ch][0] < -1) {
-                rCtx.shapebuf[ch][0] = -1;
-            }
-        } else if (s > rCtx.shaper_clipmax) {
-            double d = s / rCtx.shaper_clipmax;
-            rCtx.peak = rCtx.peak < d ? d : rCtx.peak;
-            s = rCtx.shaper_clipmax;
-            rCtx.shapebuf[ch][0] = s - u;
-
-            if (rCtx.shapebuf[ch][0] > 1) {
-                rCtx.shapebuf[ch][0] = 1;
-            }
-            if (rCtx.shapebuf[ch][0] < -1) {
-                rCtx.shapebuf[ch][0] = -1;
-            }
-        } else {
-            s = RINT(s);
-            rCtx.shapebuf[ch][0] = s - u;
-        }
-
-        return (int) s;
-    }
-
-    private static double alpha(ResampleContext rCtx) {
-        if (rCtx.AA <= 21) {
-            return 0;
-        }
-        if (rCtx.AA <= 50) {
-            return 0.5842 * Math.pow(rCtx.AA - 21, 0.4) + 0.07886 * (rCtx.AA - 21);
-        }
-        return 0.1102 * (rCtx.AA - 8.7);
-    }
-
-    private static double win(double n, int len, double alp, double iza) {
-        return I0Bessel.value(alp * Math.sqrt(1 - 4 * n * n / (((double) len - 1) * ((double) len - 1)))) / iza;
-    }
-
-    private static double sinc(double x) {
-        return x == 0 ? 1 : Math.sin(x) / x;
-    }
-
-    private static double hn_lpf(int n, double lpf, double fs) {
-        double t = 1 / fs;
-        double omega = 2 * Math.PI * lpf;
-        return 2 * lpf * t * sinc(n * omega * t);
-    }
-
-    private static int gcd(int x, int y) {
-        int t;
-
-        while (y != 0) {
-            t = x % y;
-            //noinspection SuspiciousNameCombination
-            x = y;
-            y = t;
-        }
-        return x;
-    }
-
-    private static int fillInBuf(ResampleContext rCtx, float[][] samples, int offset, int length) {
-        int ibOffset = rCtx.nch * rCtx.inbuflen;
-        int len = length * rCtx.nch;
-        int j = 0;
-        if (rCtx.nch == 1 && rCtx.rnch != rCtx.nch) {
-            j = rCtx.mono;
-        }
-        for (int i = 0; i < len; i++) {
-            rCtx.inbuf[ibOffset + i] = samples[i % rCtx.nch + j][offset + i / rCtx.nch];
-        }
-        return length;
-    }
-
-    private static int fillInBuf(ResampleContext rCtx, int[][] samples, int offset, int length) {
-        int ibOffset = rCtx.nch * rCtx.inbuflen;
-        int len = length * rCtx.nch;
-        int j = 0;
-        if (rCtx.nch == 1 && rCtx.rnch != rCtx.nch) {
-            j = rCtx.mono;
-        }
-
-        switch (rCtx.bps) {
-            case 1:
-                for (int i = 0; i < len; i++) {
-                    rCtx.inbuf[ibOffset + i] = NORMALIZE_FACTOR_8 * ((samples[i % rCtx.nch + j][offset + i / rCtx.nch] & 0xff) - 128);
-                }
-                break;
-            case 2:
-                for (int i = 0; i < len; i++) {
-                    rCtx.inbuf[ibOffset + i] = NORMALIZE_FACTOR_16 * samples[i % rCtx.nch + j][offset + i / rCtx.nch];
-                }
-                break;
-            case 3:
-                for (int i = 0; i < len; i++) {
-                    rCtx.inbuf[ibOffset + i] = NORMALIZE_FACTOR_24 * samples[i % rCtx.nch + j][offset + i / rCtx.nch];
-                }
-                break;
-            case 4:
-                for (int i = 0; i < len; i++) {
-                    rCtx.inbuf[ibOffset + i] = NORMALIZE_FACTOR_32 * samples[i % rCtx.nch + j][offset + i / rCtx.nch];
-                }
-                break;
-        }
-        return length;
-    }
-
-    private static void fillInBuf(ResampleContext rCtx, int length) {
-        int offset = rCtx.nch * rCtx.inbuflen;
-        int len = length * rCtx.nch;
-        int j = 0, jCnt = rCtx.bps;
-        if (rCtx.nch == 1 && rCtx.rnch != rCtx.nch) {
-            j = rCtx.mono * rCtx.bps;
-            jCnt = rCtx.rnch * rCtx.bps;
-        }
-        if (rCtx.srcFloat) {
-            for (int i = 0; i < len; i++, j += jCnt) {
-                rCtx.inbuf[offset + i] = rCtx.inBuffer.getDouble(j);
-            }
-        } else {
-            switch (rCtx.bps) {
-                case 1:
-                    for (int i = 0; i < len; i++, j += jCnt) {
-                        rCtx.inbuf[offset + i] = NORMALIZE_FACTOR_8 * (double) (((short) rCtx.inBuffer.get(j) & 0xff) - 128);
-                    }
-                    break;
-                case 2:
-                    for (int i = 0; i < len; i++, j += jCnt) {
-                        rCtx.inbuf[offset + i] = NORMALIZE_FACTOR_16 * (double) rCtx.inBuffer.getShort(j);
-                    }
-                    break;
-                case 3:
-                    if (rCtx.srcByteOrder == ByteOrder.LITTLE_ENDIAN) {
-                        for (int i = 0; i < len; i++, j += jCnt) {
-                            rCtx.inbuf[offset + i] = NORMALIZE_FACTOR_24
-                                    * (double) (((int) rCtx.inBuffer.getShort(j) & 0xffff) | ((int) rCtx.inBuffer.get(j + 2) << 24) >> 8);
-                        }
-                    } else {
-                        for (int i = 0; i < len; i++, j += jCnt) {
-                            rCtx.inbuf[offset + i] = NORMALIZE_FACTOR_24
-                                    * (double) ((((int) rCtx.inBuffer.get(j) << 24) >> 8) | ((int) rCtx.inBuffer.getShort(j + 1) & 0xffff));
-                        }
-                    }
-                    break;
-                case 4:
-                    for (int i = 0; i < len; i++, j += jCnt) {
-                        rCtx.inbuf[offset + i] = NORMALIZE_FACTOR_32 * (double) rCtx.inBuffer.getInt(j);
-                    }
-                    break;
-            }
-        }
-    }
-
-    private static void fillOutBuf(ResampleContext rCtx, int dbps, double gain, int nsmplwrt) {
-        int i, j, s;
-        double gain2, d, d2;
-        if (rCtx.twopass) {
-            for (i = 0; i < nsmplwrt * rCtx.nch; i++) {
-                d = rCtx.outbuf[i];
-                rCtx.outBuffer.putDouble(d);
-                d = Math.abs(d);
-                rCtx.peak = rCtx.peak < d ? d : rCtx.peak;
-            }
-        } else if (rCtx.dstFloat) {
-            if (rCtx.dither > 0) {
-                gain2 = gain * (double) 0x7fffff;
-                for (i = 0; i < nsmplwrt; i++) {
-                    for (j = 0; j < rCtx.dnch; j++) {
-                        s = do_shaping(rCtx, rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain2, (j % rCtx.nch));
-                        rCtx.outBuffer.putFloat((float) ((1 / (double) 0x7fffff) * s));
-                    }
-                }
-            } else {
-                for (i = 0; i < nsmplwrt; i++) {
-                    for (j = 0; j < rCtx.dnch; j++) {
-                        d = rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain;
-                        d2 = Math.abs(d);
-                        if (d2 > 1.0) {
-                            d /= d2;
-                            rCtx.peak = rCtx.peak < d2 ? d2 : rCtx.peak;
-                        }
-                        rCtx.outBuffer.putFloat((float) d);
-                    }
-                }
-            }
-
-        } else {
-            switch (dbps) {
-                case 1:
-                    gain2 = gain * (double) 0x7f;
-                    if (rCtx.dither > 0) {
-                        for (i = 0; i < nsmplwrt; i++) {
-                            for (j = 0; j < rCtx.dnch; j++) {
-                                s = do_shaping(rCtx, rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain2, (j % rCtx.nch));
-                                rCtx.outBuffer.put((byte) (s + 0x80)); //	((unsigned char *)rawoutbuf)[i] = s + 0x80;
-                            }
-                        }
-                    } else {
-                        for (i = 0; i < nsmplwrt; i++) {
-                            for (j = 0; j < rCtx.dnch; j++) {
-                                s = RINT(rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain2);
-
-                                if (s < -0x80) {
-                                    d = (double) s / -0x80;
-                                    rCtx.peak = rCtx.peak < d ? d : rCtx.peak;
-                                    s = -0x80;
-                                }
-                                if (0x7f < s) {
-                                    d = (double) s / 0x7f;
-                                    rCtx.peak = rCtx.peak < d ? d : rCtx.peak;
-                                    s = 0x7f;
-                                }
-                                rCtx.outBuffer.put((byte) (s + 0x80)); //	((unsigned char *)rawoutbuf)[i] = s + 0x80;
-                            }
-                        }
-                    }
-                    break;
-                case 2:
-                    gain2 = gain * (double) 0x7fff;
-                    if (rCtx.dither > 0) {
-                        for (i = 0; i < nsmplwrt; i++) {
-                            for (j = 0; j < rCtx.dnch; j++) {
-                                s = do_shaping(rCtx, rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain2, (j % rCtx.nch));
-                                rCtx.outBuffer.putShort((short) s);
-                            }
-                        }
-                    } else {
-                        for (i = 0; i < nsmplwrt; i++) {
-                            for (j = 0; j < rCtx.dnch; j++) {
-                                s = RINT(rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain2);
-
-                                if (s < -0x8000) {
-                                    d = (double) s / -0x8000;
-                                    rCtx.peak = rCtx.peak < d ? d : rCtx.peak;
-                                    s = -0x8000;
-                                }
-                                if (0x7fff < s) {
-                                    d = (double) s / 0x7fff;
-                                    rCtx.peak = rCtx.peak < d ? d : rCtx.peak;
-                                    s = 0x7fff;
-                                }
-                                rCtx.outBuffer.putShort((short) s);
-                            }
-                        }
-                    }
-                    break;
-                case 3:
-                    gain2 = gain * (double) 0x7fffff;
-                    if (rCtx.dither > 0) {
-                        for (i = 0; i < nsmplwrt; i++) {
-                            for (j = 0; j < rCtx.dnch; j++) {
-                                s = do_shaping(rCtx, rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain2, (j % rCtx.nch));
-                                rCtx.outBuffer.putShort((short) s);
-                                s >>= 16;
-                                rCtx.outBuffer.put((byte) s);
-                            }
-                        }
-                    } else {
-                        for (i = 0; i < nsmplwrt; i++) {
-                            for (j = 0; j < rCtx.dnch; j++) {
-                                s = RINT(rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain2);
-
-                                if (s < -0x800000) {
-                                    d = (double) s / -0x800000;
-                                    rCtx.peak = rCtx.peak < d ? d : rCtx.peak;
-                                    s = -0x800000;
-                                }
-                                if (0x7fffff < s) {
-                                    d = (double) s / 0x7fffff;
-                                    rCtx.peak = rCtx.peak < d ? d : rCtx.peak;
-                                    s = 0x7fffff;
-                                }
-                                rCtx.outBuffer.putShort((short) s);
-                                s >>= 16;
-                                rCtx.outBuffer.put((byte) s);
-                            }
-                        }
-                    }
-                    break;
-            }
-        }
-    }
-
-    private static int writeOutBytes(ResampleContext rCtx, int nsmplwrt, int dbps, int offset, boolean isLast) {
-        int writeLen = 0, writeOffset = 0;
-        int nch = rCtx.twopass ? rCtx.nch : rCtx.dnch;
-
-        if (!rCtx.init) {
-            if (isLast) {
-                if ((double) rCtx.sumread * rCtx.dfrq / rCtx.sfrq + 2 > rCtx.sumwrite + nsmplwrt) {
-                    writeLen = dbps * nch * nsmplwrt;
-                } else {
-                    writeLen = dbps * nch * (int) (Math.floor((double) rCtx.sumread * rCtx.dfrq / rCtx.sfrq) + 2 - rCtx.sumwrite);
-                    reset(rCtx);
-                }
-            } else {
-                writeLen = dbps * nch * nsmplwrt;
-            }
-        } else {
-            if (nsmplwrt < rCtx.delay) {
-                rCtx.delay -= nsmplwrt;
-            } else {
-                writeOffset = dbps * nch * rCtx.delay;
-                if (isLast) {
-                    if ((double) rCtx.sumread * rCtx.dfrq / rCtx.sfrq + 2 > rCtx.sumwrite + nsmplwrt - rCtx.delay) {
-                        writeLen = dbps * nch * (nsmplwrt - rCtx.delay);
-                    } else {
-                        writeLen = (int) (dbps * nch * (Math.floor((double) rCtx.sumread * rCtx.dfrq / rCtx.sfrq) + 2 - rCtx.sumwrite - rCtx.delay));
-                        reset(rCtx);
-                    }
-                } else {
-                    writeLen = dbps * nch * (nsmplwrt - rCtx.delay);
-                    rCtx.init = false;
-                }
-            }
-        }
-
-        if (writeLen > 0) {
-            if (rCtx.outBytes == null) {
-                rCtx.outBytes = new byte[rCtx.outBuffer.limit()];
-            }
-            if (rCtx.outBytes.length - offset < rCtx.outBuffer.limit()) {
-                byte[] tmpBytes = new byte[offset + rCtx.outBuffer.limit()];
-                System.arraycopy(rCtx.outBytes, 0, tmpBytes, 0, offset);
-                rCtx.outBytes = tmpBytes;
-            }
-            rCtx.outBuffer.position(writeOffset);
-            rCtx.outBuffer.get(rCtx.outBytes, offset, writeLen);
-        }
-
-        return writeLen;
-    }
-
-    private static boolean writeOutStream(ResampleContext rCtx, OutputStream fpo, int nsmplwrt, int dbps, boolean isLast) throws IOException {
-        int nch = rCtx.twopass ? rCtx.nch : rCtx.dnch;
-
-        if (!rCtx.init) {
-            if (isLast) {
-                if ((double) rCtx.sumread * rCtx.dfrq / rCtx.sfrq + 2 > rCtx.sumwrite + nsmplwrt) {
-                    fpo.write(rCtx.rawoutbuf, 0, dbps * nch * nsmplwrt);
-                    rCtx.sumwrite += nsmplwrt;
-                } else {
-                    int limitData = (int) (dbps * nch * (Math.floor((double) rCtx.sumread * rCtx.dfrq / rCtx.sfrq) + 2 - rCtx.sumwrite));
-                    if (limitData > 0) {
-                        fpo.write(rCtx.rawoutbuf, 0, limitData);
-                    }
-                    reset(rCtx);
-                    return true;
-                }
-            } else {
-                fpo.write(rCtx.rawoutbuf, 0, dbps * nch * nsmplwrt);
-                rCtx.sumwrite += nsmplwrt;
-            }
-        } else {
-            if (nsmplwrt < rCtx.delay) {
-                rCtx.delay -= nsmplwrt;
-            } else {
-                if (isLast) {
-                    if ((double) rCtx.sumread * rCtx.dfrq / rCtx.sfrq + 2 > rCtx.sumwrite + nsmplwrt - rCtx.delay) {
-                        fpo.write(rCtx.rawoutbuf, dbps * nch * rCtx.delay, dbps * nch * (nsmplwrt - rCtx.delay));
-                        rCtx.sumwrite += nsmplwrt - rCtx.delay;
-                    } else {
-                        fpo.write(rCtx.rawoutbuf, dbps * nch * rCtx.delay, (int) (dbps * nch * (Math.floor((double) rCtx.sumread * rCtx.dfrq / rCtx.sfrq) + 2 - rCtx.sumwrite - rCtx.delay)));
-                        reset(rCtx);
-                        return true;
-                    }
-                } else {
-                    fpo.write(rCtx.rawoutbuf, dbps * nch * rCtx.delay, dbps * nch * (nsmplwrt - rCtx.delay));
-                    rCtx.sumwrite += nsmplwrt - rCtx.delay;
-                    rCtx.init = false;
-                }
-            }
-        }
-        return false;
-    }
-
-    private static int upSample(ResampleContext rCtx, int nsmplwrt1) {
-        // apply stage 1 filter
-        int ch, p, i, j, s1o, no, ip2, nsmplwrt2 = 0;
-        int s1p_backup = rCtx.sp;
-        int ip_backup = rCtx.ip;
-        int osc_backup = rCtx.osc;
-        double re, im, d, tmp;
-
-        for (ch = 0; ch < rCtx.nch; ch++) {
-            no = rCtx.ny * rCtx.osf;
-
-            rCtx.sp = s1p_backup;
-            rCtx.ip = ip_backup + ch;
-
-            switch (rCtx.nx) {
-                case 7:
-                    for (p = 0; p < nsmplwrt1; p++) {
-                        s1o = rCtx.fOrder[rCtx.sp];
-
-                        rCtx.buf2[ch][p]
-                                = rCtx.stageB[s1o][0] * rCtx.inbuf[rCtx.ip]
-                                + rCtx.stageB[s1o][1] * rCtx.inbuf[rCtx.ip + rCtx.nch]
-                                + rCtx.stageB[s1o][2] * rCtx.inbuf[rCtx.ip + 2 * rCtx.nch]
-                                + rCtx.stageB[s1o][3] * rCtx.inbuf[rCtx.ip + 3 * rCtx.nch]
-                                + rCtx.stageB[s1o][4] * rCtx.inbuf[rCtx.ip + 4 * rCtx.nch]
-                                + rCtx.stageB[s1o][5] * rCtx.inbuf[rCtx.ip + 5 * rCtx.nch]
-                                + rCtx.stageB[s1o][6] * rCtx.inbuf[rCtx.ip + 6 * rCtx.nch];
-
-                        rCtx.ip += rCtx.fInc[rCtx.sp];
-
-                        rCtx.sp++;
-                        if (rCtx.sp == no) {
-                            rCtx.sp = 0;
-                        }
-                    }
-                    break;
-                case 9:
-                    for (p = 0; p < nsmplwrt1; p++) {
-                        s1o = rCtx.fOrder[rCtx.sp];
-
-                        rCtx.buf2[ch][p]
-                                = rCtx.stageB[s1o][0] * rCtx.inbuf[rCtx.ip]
-                                + rCtx.stageB[s1o][1] * rCtx.inbuf[rCtx.ip + rCtx.nch]
-                                + rCtx.stageB[s1o][2] * rCtx.inbuf[rCtx.ip + 2 * rCtx.nch]
-                                + rCtx.stageB[s1o][3] * rCtx.inbuf[rCtx.ip + 3 * rCtx.nch]
-                                + rCtx.stageB[s1o][4] * rCtx.inbuf[rCtx.ip + 4 * rCtx.nch]
-                                + rCtx.stageB[s1o][5] * rCtx.inbuf[rCtx.ip + 5 * rCtx.nch]
-                                + rCtx.stageB[s1o][6] * rCtx.inbuf[rCtx.ip + 6 * rCtx.nch]
-                                + rCtx.stageB[s1o][7] * rCtx.inbuf[rCtx.ip + 7 * rCtx.nch]
-                                + rCtx.stageB[s1o][8] * rCtx.inbuf[rCtx.ip + 8 * rCtx.nch];
-
-                        rCtx.ip += rCtx.fInc[rCtx.sp];
-
-                        rCtx.sp++;
-                        if (rCtx.sp == no) {
-                            rCtx.sp = 0;
-                        }
-                    }
-                    break;
-                default:
-                    for (p = 0; p < nsmplwrt1; p++) {
-                        tmp = 0;
-                        ip2 = rCtx.ip;
-
-                        s1o = rCtx.fOrder[rCtx.sp];
-
-                        for (i = 0; i < rCtx.nx; i++) {
-                            tmp += rCtx.stageB[s1o][i] * rCtx.inbuf[ip2];
-                            ip2 += rCtx.nch;
-                        }
-                        rCtx.buf2[ch][p] = tmp;
-
-                        rCtx.ip += rCtx.fInc[rCtx.sp];
-
-                        rCtx.sp++;
-                        if (rCtx.sp == no) {
-                            rCtx.sp = 0;
-                        }
-                    }
-                    break;
-            }
-
-            rCtx.osc = osc_backup;
-
-            // apply stage 2 filter
-            Arrays.fill(rCtx.buf2[ch], nsmplwrt1, rCtx.nb, 0);
-
-            rCtx.fft.realDFT(rCtx.buf2[ch]);
-
-            rCtx.buf2[ch][0] = rCtx.stageA[0] * rCtx.buf2[ch][0];
-            rCtx.buf2[ch][1] = rCtx.stageA[1] * rCtx.buf2[ch][1];
-
-            for (i = 1; i < rCtx.nb / 2; i++) {
-
-                re = rCtx.stageA[i * 2] * rCtx.buf2[ch][i * 2] - rCtx.stageA[i * 2 + 1] * rCtx.buf2[ch][i * 2 + 1];
-                im = rCtx.stageA[i * 2 + 1] * rCtx.buf2[ch][i * 2] + rCtx.stageA[i * 2] * rCtx.buf2[ch][i * 2 + 1];
-
-                //System.out.println(String.format("%d : %g %g %g %g %g %g\n",i,rCtx.stageA[i*2],rCtx.stageA[i*2+1],rCtx.buf2[ch][i*2],rCtx.buf2[ch][i*2+1],re,im));
-                rCtx.buf2[ch][i * 2] = re;
-                rCtx.buf2[ch][i * 2 + 1] = im;
-            }
-
-            rCtx.fft.realInverseDFT(rCtx.buf2[ch]);
-
-            for (i = rCtx.osc, j = 0; i < rCtx.nb2; i += rCtx.osf, j++) {
-                d = (rCtx.buf1[ch][j] + rCtx.buf2[ch][i]);
-                rCtx.outbuf[ch + j * rCtx.nch] = d;
-            }
-
-            nsmplwrt2 = j;
-
-            rCtx.osc = i - rCtx.nb2;
-
-            for (j = 0; i < rCtx.nb; i += rCtx.osf, j++) {
-                rCtx.buf1[ch][j] = rCtx.buf2[ch][i];
-            }
-        }
-
-        return nsmplwrt2;
-    }
-
-    private static int downSample(ResampleContext rCtx) {
-        int rps_backup = rCtx.rps;
-        int s2p_backup = rCtx.sp;
-        int i, j, k, ch, t1, bp, nsmplwrt2 = 0;
-        double re, im, tmp;
-        int bp2;
-        int s2o;
-
-        for (ch = 0; ch < rCtx.nch; ch++) {
-            rCtx.rps = rps_backup;
-
-            Arrays.fill(rCtx.buf1[ch],0,rCtx.rps,0);
-
-            for (i = rCtx.rps, j = 0; i < rCtx.nb2; i += rCtx.osf, j++) {
-//				assert(j < ((rCtx.nb2-rCtx.rps-1)/rCtx.osf+1));
-                rCtx.buf1[ch][i] = rCtx.inbuf[j * rCtx.nch + ch];
-                for (k = i + 1; k < i + rCtx.osf; k++) {
-                    rCtx.buf1[ch][k] = 0;
-                }
-            }
-
-//			assert(j == ((rCtx.nb2-rCtx.rps-1)/rCtx.osf+1));
-            Arrays.fill(rCtx.buf1[ch],rCtx.nb2,rCtx.nb,0);
-
-            rCtx.rps = i - rCtx.nb2;
-            rCtx.fft.realDFT(rCtx.buf1[ch]);
-            rCtx.buf1[ch][0] = rCtx.stageA[0] * rCtx.buf1[ch][0];
-            rCtx.buf1[ch][1] = rCtx.stageA[1] * rCtx.buf1[ch][1];
-            for (i = 1; i < rCtx.nb2; i++) {
-                re = rCtx.stageA[i * 2] * rCtx.buf1[ch][i * 2] - rCtx.stageA[i * 2 + 1] * rCtx.buf1[ch][i * 2 + 1];
-                im = rCtx.stageA[i * 2 + 1] * rCtx.buf1[ch][i * 2] + rCtx.stageA[i * 2] * rCtx.buf1[ch][i * 2 + 1];
-
-                rCtx.buf1[ch][i * 2] = re;
-                rCtx.buf1[ch][i * 2 + 1] = im;
-            }
-
-            rCtx.fft.realInverseDFT(rCtx.buf1[ch]);
-            for (i = 0; i < rCtx.nb2; i++) {
-                rCtx.buf2[ch][rCtx.nx + 1 + i] += rCtx.buf1[ch][i];
-            }
-
-            t1 = rCtx.rp / (rCtx.fs2 / rCtx.fs1);
-            if (rCtx.rp % (rCtx.fs2 / rCtx.fs1) != 0) {
-                t1++;
-            }
-
-            bp = t1; // bp = &(buf2[ch][t1]);
-            rCtx.sp = s2p_backup;
-
-            for (j = 0; bp < rCtx.nb2 + 1; j++) {
-                tmp = 0;
-                bp2 = bp;
-                s2o = rCtx.fOrder[rCtx.sp];
-                bp += rCtx.fInc[rCtx.sp];
-                rCtx.sp++;
-
-                if (rCtx.sp == rCtx.ny) {
-                    rCtx.sp = 0;
-                }
-
-//				assert(bp2*(rCtx.fs2/rCtx.fs1)-(rCtx.rp+j*(rCtx.fs2/rCtx.dfrq)) == s2o);
-                for (i = 0; i < rCtx.nx; i++) {
-                    tmp += rCtx.stageB[s2o][i] * rCtx.buf2[ch][bp2++];
-                }
-
-                rCtx.outbuf[j * rCtx.nch + ch] = tmp;
-            }
-
-            nsmplwrt2 = j;
-        }
-        return nsmplwrt2;
-    }
-
-    /*
-     * float[][] input
-     * Duplicated the int[][] version instead of generalizing it to minimize branching within the loop.
-     */
-    private static int upsample(ResampleContext rCtx, float[][] samples, int length, double gain, boolean isLast) {
-        int nsmplwrt1 = rCtx.nb2, nsmplwrt2;
-        int writeLen;
-        int dbps = rCtx.twopass ? 8 : rCtx.dstFloat ? 4 : rCtx.dbps;
-        int tobereadbase = (int) Math.floor((double) rCtx.nb2 * rCtx.sfrq / (rCtx.dfrq * rCtx.osf)) + 1 + rCtx.nx;
-        int toberead = tobereadbase - rCtx.inbuflen;
-
-        if (length < toberead && !isLast) {
-            rCtx.inbuflen += fillInBuf(rCtx, samples, 0, length);
-            rCtx.sumread += length;
-            return 0;
-        }
-
-        if (length == 0 && rCtx.inbuflen > 0 && isLast) {
-            Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch, 0);
-            nsmplwrt1 = rCtx.nb2;
-            rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch;
-            nsmplwrt2 = upSample(rCtx, nsmplwrt1);
-            rCtx.rp += nsmplwrt1 * rCtx.sfrqfrqgcd / rCtx.osf;
-            rCtx.outBuffer.clear();
-            fillOutBuf(rCtx, dbps, gain, nsmplwrt2);
-            rCtx.outBuffer.flip();
-            return writeOutBytes(rCtx, nsmplwrt2, dbps, 0, true);
-        }
-
-        int outBytesWritten = 0;
-        int lenUsed = 0;
-        while (lenUsed < length) {
-            toberead = tobereadbase - rCtx.inbuflen;
-
-
-            if (length - lenUsed < toberead) {
-                if(!isLast) {
-                    rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, length - lenUsed);
-                    rCtx.sumread += length - lenUsed;
-                    return outBytesWritten;
-                }
-                Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch, 0);
-                toberead = length - lenUsed;
-            }
-            rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, toberead);
-            lenUsed += toberead;
-            rCtx.sumread += toberead;
-
-
-            rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch;
-
-            nsmplwrt2 = upSample(rCtx, nsmplwrt1);
-
-            rCtx.rp += nsmplwrt1 * rCtx.sfrqfrqgcd / rCtx.osf;
-
-            rCtx.outBuffer.clear();
-            fillOutBuf(rCtx, dbps, gain, nsmplwrt2);
-            rCtx.outBuffer.flip();
-
-            writeLen = writeOutBytes(rCtx, nsmplwrt2, dbps, outBytesWritten, isLast);
-            if (writeLen < 0) {
-                break;
-            }
-            outBytesWritten += writeLen;
-
-            rCtx.sumwrite += writeLen / rCtx.wbpf;
-
-            rCtx.ds = (rCtx.rp - 1) / rCtx.fs1sfrq;
-
-            if(rCtx.inbuflen > rCtx.ds)
-                System.arraycopy(rCtx.inbuf, rCtx.nch * rCtx.ds, rCtx.inbuf, 0, rCtx.nch * (rCtx.inbuflen - rCtx.ds));
-
-            rCtx.inbuflen -= rCtx.ds;
-            rCtx.rp -= rCtx.ds * rCtx.fs1sfrq;
-        }
-        return outBytesWritten;
-    }
-
-    private static int downsample(ResampleContext rCtx, float[][] samples, int length, double gain, boolean isLast) {
-        int nsmplwrt;
-        int writeLen;
-        int dbps = rCtx.twopass ? 8 : rCtx.dstFloat ? 4 : rCtx.dbps;
-        int toberead = ((rCtx.nb2 - rCtx.rps - 1) / rCtx.osf + 1);
-
-        if (rCtx.inbuflen + length < toberead && !isLast) {
-            rCtx.inbuflen += fillInBuf(rCtx, samples, 0, length);
-            rCtx.sumread += length;
-            return 0;
-        }
-
-        if (length == 0 && rCtx.inbuflen > 0 && isLast) {
-            Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, toberead * rCtx.nch, 0);
-            nsmplwrt = downSample(rCtx);
-            rCtx.inbuflen = 0;
-            rCtx.rp += nsmplwrt * (rCtx.fs2 / rCtx.dfrq);
-            rCtx.outBuffer.clear();
-            fillOutBuf(rCtx, dbps, gain, nsmplwrt);
-            rCtx.outBuffer.flip();
-            return writeOutBytes(rCtx, nsmplwrt, dbps, 0, true);
-        }
-
-        int outBytesWritten = 0;
-        int lenUsed = 0;
-
-        while (lenUsed < length) {
-            toberead = ((rCtx.nb2 - rCtx.rps - 1) / rCtx.osf + 1) - rCtx.inbuflen;
-
-            if (length - lenUsed < toberead) {
-                if(!isLast) {
-                    rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, length - lenUsed);
-                    rCtx.sumread += length - lenUsed;
-                    return outBytesWritten;
-                }
-                Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, (toberead + rCtx.inbuflen) * rCtx.nch, 0);
-                toberead = length - lenUsed;
-            }
-            rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, toberead);
-            lenUsed += toberead;
-
-            rCtx.sumread += toberead;
-
-            nsmplwrt = downSample(rCtx);
-            rCtx.inbuflen = 0;
-            rCtx.rp += nsmplwrt * rCtx.fs2dfrq;
-
-            rCtx.outBuffer.clear();
-            fillOutBuf(rCtx, dbps, gain, nsmplwrt);
-            rCtx.outBuffer.flip();
-
-            writeLen = writeOutBytes(rCtx, nsmplwrt, dbps, outBytesWritten, isLast);
-            if (writeLen < 0) {
-                break;
-            }
-            outBytesWritten += writeLen;
-
-            rCtx.sumwrite += writeLen / rCtx.wbpf;
-
-            rCtx.ds = (rCtx.rp - 1) / rCtx.fs2fs1;
-
-            if (rCtx.ds > rCtx.nb2) {
-                rCtx.ds = rCtx.nb2;
-            }
-
-            int ch;
-            for (ch = 0; ch < rCtx.nch; ch++) {
-                System.arraycopy(rCtx.buf2[ch], rCtx.ds, rCtx.buf2[ch], 0, rCtx.nx + 1 + rCtx.nb2 - rCtx.ds);
-            }
-
-            rCtx.rp -= rCtx.ds * rCtx.fs2fs1;
-
-            for (ch = 0; ch < rCtx.nch; ch++) {
-                System.arraycopy(rCtx.buf1[ch], rCtx.nb2, rCtx.buf2[ch], rCtx.nx + 1, rCtx.nb2);
-            }
-
-        }
-        return outBytesWritten;
-    }
-
-    private static int no_src(ResampleContext rCtx, float[][] samples, int length, double gain) {
-        int i, ch;
-        double f, p;
-        int len;
-
-        int outBytesWritten = 0;
-        int lenUsed = 0;
-
-        int j = 0;
-        if (rCtx.nch == 1 && rCtx.rnch != rCtx.nch) {
-            j = rCtx.mono;
-        }
-
-        while (lenUsed < length) {
-            len = length - lenUsed;
-            rCtx.outBuffer.clear();
-            if (len > rCtx.outBuffer.limit() / rCtx.nch) {
-                len = rCtx.outBuffer.limit() / rCtx.nch;
-            }
-            lenUsed += len;
-
-            if (rCtx.twopass) {
-                for (i = 0; i < len; i++) {
-                    for (ch = 0; ch < rCtx.nch; ch++) {
-                        f = samples[ch % rCtx.nch + j][i] * gain;
-                        p = f > 0 ? f : -f;
-                        rCtx.peak = rCtx.peak < p ? p : rCtx.peak;
-                        rCtx.outBuffer.putDouble(f);
-                    }
-                }
-            } else {
-                for (i = 0; i < len; i++) {
-                    for (ch = 0; ch < rCtx.dnch; ch++) {
-                        f = samples[ch % rCtx.nch + j][i] * gain;
-                        writeToOutBuffer(rCtx, f, (ch % rCtx.nch));
-                    }
-                }
-            }
-            rCtx.outBuffer.flip();
-            if (rCtx.outBytes.length - outBytesWritten < rCtx.outBuffer.limit()) {
-                byte[] tmpBytes = new byte[outBytesWritten + rCtx.outBuffer.limit()];
-                System.arraycopy(rCtx.outBytes, 0, tmpBytes, 0, outBytesWritten);
-                rCtx.outBytes = tmpBytes;
-            }
-            rCtx.outBuffer.get(rCtx.outBytes, outBytesWritten, rCtx.outBuffer.limit());
-            outBytesWritten += rCtx.outBuffer.limit();
-        }
-        return outBytesWritten;
-    }
-    /* end float[][] input */
-
-    /* int[][] input */
-    private static int upsample(ResampleContext rCtx, int[][] samples, int length, double gain, boolean isLast) {
-        int nsmplwrt1, nsmplwrt2;
-        int writeLen;
-        int dbps = rCtx.twopass ? 8 : rCtx.dstFloat ? 4 : rCtx.dbps;
-        int tobereadbase = (int) Math.floor((double) rCtx.nb2 * rCtx.sfrq / (rCtx.dfrq * rCtx.osf)) + 1 + rCtx.nx;
-        int toberead = tobereadbase - rCtx.inbuflen;
-
-        if (length < toberead && !isLast) {
-            rCtx.inbuflen += fillInBuf(rCtx, samples, 0, length);
-            rCtx.sumread += length;
-            return 0;
-        }
-
-        if (length == 0 && rCtx.inbuflen > 0 && isLast) {
-            Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch, 0);
-            nsmplwrt1 = rCtx.nb2;
-            rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch;
-            nsmplwrt2 = upSample(rCtx, nsmplwrt1);
-            rCtx.rp += nsmplwrt1 * rCtx.sfrqfrqgcd / rCtx.osf;
-            rCtx.outBuffer.clear();
-            fillOutBuf(rCtx, dbps, gain, nsmplwrt2);
-            rCtx.outBuffer.flip();
-            return writeOutBytes(rCtx, nsmplwrt2, dbps, 0, true);
-        }
-
-        int outBytesWritten = 0;
-        int lenUsed = 0;
-
-        while (lenUsed < length) {
-            toberead = tobereadbase - rCtx.inbuflen;
-
-            if (length - lenUsed < toberead) {
-                if(!isLast) {
-                    rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, length - lenUsed);
-                    rCtx.sumread += length - lenUsed;
-                    return outBytesWritten;
-                }
-                Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch, 0);
-                toberead = length - lenUsed;
-            }
-            rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, toberead);
-            lenUsed += toberead;
-            rCtx.sumread += toberead;
-
-            nsmplwrt1 = rCtx.nb2;
-
-            rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch;
-
-            nsmplwrt2 = upSample(rCtx, nsmplwrt1);
-
-            rCtx.rp += nsmplwrt1 * rCtx.sfrqfrqgcd / rCtx.osf;
-
-            rCtx.outBuffer.clear();
-            fillOutBuf(rCtx, dbps, gain, nsmplwrt2);
-            rCtx.outBuffer.flip();
-
-            writeLen = writeOutBytes(rCtx, nsmplwrt2, dbps, outBytesWritten, isLast);
-            if (writeLen < 0) {
-                break;
-            }
-            outBytesWritten += writeLen;
-
-            rCtx.sumwrite += writeLen / rCtx.wbpf;
-
-            rCtx.ds = (rCtx.rp - 1) / rCtx.fs1sfrq;
-
-            if(rCtx.inbuflen > rCtx.ds)
-                System.arraycopy(rCtx.inbuf, rCtx.nch * rCtx.ds, rCtx.inbuf, 0, rCtx.nch * (rCtx.inbuflen - rCtx.ds));
-
-            rCtx.inbuflen -= rCtx.ds;
-            rCtx.rp -= rCtx.ds * rCtx.fs1sfrq;
-        }
-        return outBytesWritten;
-    }
-
-    private static int downsample(ResampleContext rCtx, int[][] samples, int length, double gain, boolean isLast) {
-        int nsmplwrt;
-        int writeLen;
-        int dbps = rCtx.twopass ? 8 : rCtx.dstFloat ? 4 : rCtx.dbps;
-        int toberead = ((rCtx.nb2 - rCtx.rps - 1) / rCtx.osf + 1);
-
-        if (rCtx.inbuflen + length < toberead && !isLast) {
-            rCtx.inbuflen += fillInBuf(rCtx, samples, 0, length);
-            rCtx.sumread += length;
-            return 0;
-        }
-
-        if (length == 0 && rCtx.inbuflen > 0 && isLast) {
-            Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, toberead * rCtx.nch, 0);
-            nsmplwrt = downSample(rCtx);
-            rCtx.inbuflen = 0;
-            rCtx.rp += nsmplwrt * (rCtx.fs2 / rCtx.dfrq);
-            rCtx.outBuffer.clear();
-            fillOutBuf(rCtx, dbps, gain, nsmplwrt);
-            rCtx.outBuffer.flip();
-            return writeOutBytes(rCtx, nsmplwrt, dbps, 0, true);
-        }
-
-        int outBytesWritten = 0;
-        int lenUsed = 0;
-
-        while (lenUsed < length) {
-            toberead = ((rCtx.nb2 - rCtx.rps - 1) / rCtx.osf + 1) - rCtx.inbuflen;
-
-            if (length - lenUsed < toberead) {
-                if(!isLast) {
-                    rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, length - lenUsed);
-                    rCtx.sumread += length - lenUsed;
-                    return outBytesWritten;
-                }
-                Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, (toberead + rCtx.inbuflen) * rCtx.nch, 0);
-                toberead = length - lenUsed;
-            }
-            rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, toberead);
-            lenUsed += toberead;
-
-            rCtx.sumread += toberead;
-
-            nsmplwrt = downSample(rCtx);
-            rCtx.inbuflen = 0;
-            rCtx.rp += nsmplwrt * rCtx.fs2dfrq;
-
-            rCtx.outBuffer.clear();
-            fillOutBuf(rCtx, dbps, gain, nsmplwrt);
-            rCtx.outBuffer.flip();
-
-            writeLen = writeOutBytes(rCtx, nsmplwrt, dbps, outBytesWritten, isLast);
-            if (writeLen < 0) {
-                break;
-            }
-            outBytesWritten += writeLen;
-
-            rCtx.sumwrite += writeLen / rCtx.wbpf;
-
-            rCtx.ds = (rCtx.rp - 1) / rCtx.fs2fs1;
-
-            if (rCtx.ds > rCtx.nb2) {
-                rCtx.ds = rCtx.nb2;
-            }
-
-            int ch;
-            for (ch = 0; ch < rCtx.nch; ch++) {
-                System.arraycopy(rCtx.buf2[ch], rCtx.ds, rCtx.buf2[ch], 0, rCtx.nx + 1 + rCtx.nb2 - rCtx.ds);
-            }
-
-            rCtx.rp -= rCtx.ds * rCtx.fs2fs1;
-
-            for (ch = 0; ch < rCtx.nch; ch++) {
-                System.arraycopy(rCtx.buf1[ch], rCtx.nb2, rCtx.buf2[ch], rCtx.nx + 1, rCtx.nb2);
-            }
-
-        }
-        return outBytesWritten;
-    }
-
-    private static int no_src(ResampleContext rCtx, int[][] samples, int length, double gain) {
-        int i, ch;
-        double f, p;
-        int len;
-
-        int outBytesWritten = 0;
-        int lenUsed = 0;
-
-        int j = 0;
-        if (rCtx.nch == 1 && rCtx.rnch != rCtx.nch) {
-            j = rCtx.mono;
-        }
-
-        while (lenUsed < length) {
-            len = length - lenUsed;
-            rCtx.outBuffer.clear();
-            if (len > rCtx.outBuffer.limit() / rCtx.nch) {
-                len = rCtx.outBuffer.limit() / rCtx.nch;
-            }
-            lenUsed += len;
-
-            if (rCtx.twopass) {
-                for (i = 0; i < len; i++) {
-                    for (ch = 0; ch < rCtx.nch; ch++) {
-                        f = intSampleToDouble(rCtx, samples[ch % rCtx.nch + j][i]) * gain;
-                        p = f > 0 ? f : -f;
-                        rCtx.peak = rCtx.peak < p ? p : rCtx.peak;
-                        rCtx.outBuffer.putDouble(f);
-                    }
-                }
-            } else if (rCtx.dbps == rCtx.bps && !rCtx.dstFloat) {
-                for (i = 0; i < len; i++) {
-                    for (ch = 0; ch < rCtx.dnch; ch++) {
-                        writeIntToBuffer(rCtx, samples[ch % rCtx.nch + j][i], gain);
-                    }
-                }
-            } else {
-                for (i = 0; i < len; i++) {
-                    for (ch = 0; ch < rCtx.dnch; ch++) {
-                        f = intSampleToDouble(rCtx, samples[ch % rCtx.nch + j][i]) * gain;
-                        writeToOutBuffer(rCtx, f, (ch % rCtx.nch));
-                    }
-                }
-            }
-            rCtx.outBuffer.flip();
-            if (rCtx.outBytes.length - outBytesWritten < rCtx.outBuffer.limit()) {
-                byte[] tmpBytes = new byte[outBytesWritten + rCtx.outBuffer.limit()];
-                System.arraycopy(rCtx.outBytes, 0, tmpBytes, 0, outBytesWritten);
-                rCtx.outBytes = tmpBytes;
-            }
-            rCtx.outBuffer.get(rCtx.outBytes, outBytesWritten, rCtx.outBuffer.limit());
-            outBytesWritten += rCtx.outBuffer.limit();
-        }
-        return outBytesWritten;
-    }
-    /* end int[][] input */
-
-    /* byte[] input */
-    private static int upsample(ResampleContext rCtx, byte[] samples, int offset, int length, double gain, boolean isLast) {
-        int nsmplread, nsmplwrt1, nsmplwrt2;
-        int writeLen;
-        int dbps = rCtx.twopass ? 8 : rCtx.dstFloat ? 4 : rCtx.dbps;
-        int tobereadbase = (int) Math.floor((double) rCtx.nb2 * rCtx.sfrq / (rCtx.dfrq * rCtx.osf)) + 1 + rCtx.nx;
-        int toberead = tobereadbase - rCtx.inbuflen;
-
-        if (rCtx.inBuffer.position() + length < toberead * rCtx.bpf && !isLast) {
-            rCtx.inBuffer.put(samples, offset, length);
-            return 0;
-        }
-
-        if (length == 0 && rCtx.inBuffer.hasRemaining() && isLast) {
-            nsmplread = rCtx.inBuffer.position() / rCtx.bpf;
-            rCtx.inBuffer.flip();
-            fillInBuf(rCtx, nsmplread);
-            Arrays.fill(rCtx.inbuf, rCtx.nch * (rCtx.inbuflen + nsmplread), rCtx.nch * (rCtx.inbuflen + toberead), 0);
-            rCtx.inBuffer.clear();
-            rCtx.inbuflen += toberead;
-            rCtx.sumread += nsmplread;
-            nsmplwrt1 = rCtx.nb2;
-            rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch;
-            nsmplwrt2 = upSample(rCtx, nsmplwrt1);
-            rCtx.rp += nsmplwrt1 * rCtx.sfrqfrqgcd / rCtx.osf;
-            rCtx.outBuffer.clear();
-            fillOutBuf(rCtx, dbps, gain, nsmplwrt2);
-            rCtx.outBuffer.flip();
-            return writeOutBytes(rCtx, nsmplwrt2, dbps, 0, true);
-        }
-
-        int outBytesWritten = 0;
-        int lenUsed = 0;
-
-        while (lenUsed < length) {
-            toberead = tobereadbase - rCtx.inbuflen;
-            nsmplread = toberead * rCtx.bpf - rCtx.inBuffer.position();
-            if (nsmplread > length - lenUsed) {
-                nsmplread = length - lenUsed;
-            }
-
-            rCtx.inBuffer.put(samples, offset + lenUsed, nsmplread);
-            lenUsed += nsmplread;
-
-            if (rCtx.inBuffer.position() < toberead * rCtx.bpf) {
-                if(!isLast)
-                    return outBytesWritten;
-                nsmplread = rCtx.inBuffer.position() / rCtx.bpf;
-                Arrays.fill(rCtx.inbuf, rCtx.nch * (rCtx.inbuflen + nsmplread), rCtx.nch * (rCtx.inbuflen + toberead), 0);
-                toberead = nsmplread;
-            }
-
-            rCtx.inBuffer.flip();
-            fillInBuf(rCtx, toberead);
-            rCtx.inBuffer.clear();
-
-            rCtx.inbuflen += toberead;
-
-            rCtx.sumread += toberead;
-
-            nsmplwrt1 = rCtx.nb2;
-
-            rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch;
-
-            nsmplwrt2 = upSample(rCtx, nsmplwrt1);
-
-            rCtx.rp += nsmplwrt1 * rCtx.sfrqfrqgcd / rCtx.osf;
-
-            rCtx.outBuffer.clear();
-            fillOutBuf(rCtx, dbps, gain, nsmplwrt2);
-            rCtx.outBuffer.flip();
-
-            writeLen = writeOutBytes(rCtx, nsmplwrt2, dbps, outBytesWritten, isLast);
-            if (writeLen < 0) {
-                break;
-            }
-            outBytesWritten += writeLen;
-
-            rCtx.sumwrite += writeLen / rCtx.wbpf;
-
-            rCtx.ds = (rCtx.rp - 1) / rCtx.fs1sfrq;
-
-            if(rCtx.inbuflen > rCtx.ds)
-                System.arraycopy(rCtx.inbuf, rCtx.nch * rCtx.ds, rCtx.inbuf, 0, rCtx.nch * (rCtx.inbuflen - rCtx.ds));
-
-            rCtx.inbuflen -= rCtx.ds;
-            rCtx.rp -= rCtx.ds * rCtx.fs1sfrq;
-        }
-        return outBytesWritten;
-    }
-
-    private static int downsample(ResampleContext rCtx, byte[] samples, int offset, int length, double gain, boolean isLast) {
-        int nsmplread, nsmplwrt;
-        int writeLen;
-        int dbps = rCtx.twopass ? 8 : rCtx.dstFloat ? 4 : rCtx.dbps;
-        int toberead = ((rCtx.nb2 - rCtx.rps - 1) / rCtx.osf + 1);
-
-        if (rCtx.inBuffer.position() + length < toberead * rCtx.bpf && !isLast) {
-            rCtx.inBuffer.put(samples, offset, length);
-            return 0;
-        }
-
-        if (length == 0 && rCtx.inBuffer.hasRemaining() && isLast) {
-            nsmplread = rCtx.inBuffer.position() / (rCtx.bpf);
-            rCtx.inBuffer.flip();
-            fillInBuf(rCtx, nsmplread);
-            Arrays.fill(rCtx.inbuf, nsmplread * rCtx.nch, toberead * rCtx.nch, 0);
-            rCtx.inBuffer.clear();
-            rCtx.sumread += nsmplread;
-            nsmplwrt = downSample(rCtx);
-            rCtx.rp += nsmplwrt * (rCtx.fs2 / rCtx.dfrq);
-            rCtx.outBuffer.clear();
-            fillOutBuf(rCtx, dbps, gain, nsmplwrt);
-            rCtx.outBuffer.flip();
-            return writeOutBytes(rCtx, nsmplwrt, dbps, 0, true);
-        }
-
-        int outBytesWritten = 0;
-        int lenUsed = 0;
-
-        while (lenUsed < length) {
-            toberead = ((rCtx.nb2 - rCtx.rps - 1) / rCtx.osf + 1);
-            nsmplread = toberead * rCtx.bpf - rCtx.inBuffer.position();
-            if (nsmplread > length - lenUsed) {
-                nsmplread = length - lenUsed;
-            }
-            rCtx.inBuffer.put(samples, offset + lenUsed, nsmplread);
-            lenUsed += nsmplread;
-
-            if (rCtx.inBuffer.position() < toberead * rCtx.bpf) {
-                if(!isLast)
-                    return outBytesWritten;
-                nsmplread = rCtx.inBuffer.position() / rCtx.bpf;
-                Arrays.fill(rCtx.inbuf, rCtx.nch * (rCtx.inbuflen + nsmplread), rCtx.nch * (rCtx.inbuflen + toberead), 0);
-                toberead = nsmplread;
-            }
-
-            rCtx.inBuffer.flip();
-            fillInBuf(rCtx, toberead);
-            rCtx.inBuffer.clear();
-
-            rCtx.sumread += toberead;
-
-            nsmplwrt = downSample(rCtx);
-            rCtx.rp += nsmplwrt * rCtx.fs2dfrq;
-
-            rCtx.outBuffer.clear();
-            fillOutBuf(rCtx, dbps, gain, nsmplwrt);
-            rCtx.outBuffer.flip();
-
-            writeLen = writeOutBytes(rCtx, nsmplwrt, dbps, outBytesWritten, isLast);
-            if (writeLen < 0) {
-                break;
-            }
-            outBytesWritten += writeLen;
-
-            rCtx.sumwrite += writeLen / rCtx.wbpf;
-
-            rCtx.ds = (rCtx.rp - 1) / rCtx.fs2fs1;
-
-            if (rCtx.ds > rCtx.nb2) {
-                rCtx.ds = rCtx.nb2;
-            }
-
-            int ch;
-            for (ch = 0; ch < rCtx.nch; ch++) {
-                System.arraycopy(rCtx.buf2[ch], rCtx.ds, rCtx.buf2[ch], 0, rCtx.nx + 1 + rCtx.nb2 - rCtx.ds);
-            }
-
-            rCtx.rp -= rCtx.ds * rCtx.fs2fs1;
-
-            for (ch = 0; ch < rCtx.nch; ch++) {
-                System.arraycopy(rCtx.buf1[ch], rCtx.nb2, rCtx.buf2[ch], rCtx.nx + 1, rCtx.nb2);
-            }
-        }
-        return outBytesWritten;
-    }
-
-    private static int no_src(ResampleContext rCtx, byte[] samples, int offset, int length, double gain) {
-        int i, ch;
-        double f, p;
-        int len = length;
-
-        if (len >= rCtx.inBuffer.remaining()) {
-            len = rCtx.inBuffer.remaining();
-        }
-
-        if (rCtx.inBuffer.position() + len < rCtx.bps * rCtx.nch) {
-            rCtx.inBuffer.put(samples, offset, len);
-            return 0;
-        }
-
-        int outBytesWritten = 0;
-        int lenUsed = 0;
-
-        int j = 0;
-        if (rCtx.nch == 1 && rCtx.rnch != rCtx.nch) {
-            j = rCtx.mono;
-        }
-
-        while (lenUsed < length) {
-            len = rCtx.inBuffer.remaining();
-            if (len > length - lenUsed) {
-                len = length - lenUsed;
-            }
-
-            rCtx.inBuffer.put(samples, offset + lenUsed, len);
-
-            if (rCtx.inBuffer.position() < rCtx.bps * rCtx.nch) {
-                break;
-            }
-
-            rCtx.inBuffer.flip();
-            rCtx.outBuffer.clear();
-
-            lenUsed += len;
-
-            if (rCtx.twopass) {
-                for (i = 0; i < rCtx.inBuffer.limit() - rCtx.bps * rCtx.rnch; i += rCtx.bps * rCtx.rnch) {
-                    for (ch = 0; ch < rCtx.nch; ch++) {
-                        f = readFromInBuffer(rCtx, i + (ch + j) * rCtx.bps) * gain;
-                        p = f > 0 ? f : -f;
-                        rCtx.peak = rCtx.peak < p ? p : rCtx.peak;
-                        rCtx.outBuffer.putDouble(f);
-                    }
-                }
-            } else {
-                for (i = 0; i < rCtx.inBuffer.limit() - rCtx.bps * rCtx.rnch; i += rCtx.bps * rCtx.rnch) {
-                    for (ch = 0; ch < rCtx.dnch; ch++) {
-                        f = readFromInBuffer(rCtx, i + ((ch % rCtx.nch) + j) * rCtx.bps) * gain;
-                        writeToOutBuffer(rCtx, f, (ch % rCtx.nch));
-                    }
-                }
-            }
-            rCtx.inBuffer.position(i);
-            rCtx.inBuffer.compact();
-            rCtx.outBuffer.flip();
-            if (rCtx.outBytes.length - outBytesWritten < rCtx.outBuffer.limit()) {
-                byte[] tmpBytes = new byte[outBytesWritten + rCtx.outBuffer.limit()];
-                System.arraycopy(rCtx.outBytes, 0, tmpBytes, 0, outBytesWritten);
-                rCtx.outBytes = tmpBytes;
-            }
-            rCtx.outBuffer.get(rCtx.outBytes, outBytesWritten, rCtx.outBuffer.limit());
-            outBytesWritten += rCtx.outBuffer.limit();
-        }
-        return outBytesWritten;
-    }
-    /* end byte[] input */
-
-    /* Stream input/output */
-    private void upsample(InputStream fpi, OutputStream fpo, double gain, long length) throws IOException {
-        int spcount = 0;
-        boolean ending;
-        int nsmplread, toberead, toberead2, tmpLen, readLen, nsmplwrt1;
-        boolean EOF = false;
-        int nsmplwrt2;
-        int dbps = rCtx.twopass ? 8 : rCtx.dstFloat ? 4 : rCtx.dbps;
-        long chanklen = length / rCtx.bps / rCtx.rnch;
-        int tobereadbase = (int) Math.floor((double) rCtx.nb2 * rCtx.sfrq / (rCtx.dfrq * rCtx.osf)) + 1 + rCtx.nx;
-        rCtx.sumread = rCtx.sumwrite = 0;
-
-        for (;;) {
-            toberead2 = toberead = tobereadbase - rCtx.inbuflen;
-            if (toberead + rCtx.sumread > chanklen) {
-                toberead = (int) (chanklen - rCtx.sumread);
-            }
-
-            rCtx.inBuffer.clear();
-            nsmplread = 0;
-            readLen = rCtx.bpf * toberead;
+    /* end byte[] input */ /* Stream input/output */
+    @Throws(IOException::class)
+    private fun upsample(fpi: InputStream, fpo: OutputStream, gain: Double, length: Long) {
+        var spcount = 0
+        var ending: Boolean
+        var nsmplread: Int
+        var toberead: Int
+        var toberead2: Int
+        var tmpLen: Int
+        var readLen: Int
+        var nsmplwrt1: Int
+        var EOF = false
+        var nsmplwrt2: Int
+        val dbps = if (rCtx!!.twopass) 8 else if (rCtx!!.dstFloat) 4 else rCtx!!.dbps
+        val chanklen = length / rCtx!!.bps / rCtx!!.rnch
+        val tobereadbase =
+            floor(rCtx!!.nb2.toDouble() * rCtx!!.sfrq / (rCtx!!.dfrq * rCtx!!.osf)).toInt() + 1 + rCtx!!.nx
+        rCtx!!.sumwrite = 0
+        rCtx!!.sumread = rCtx!!.sumwrite
+
+        while (true) {
+            toberead = tobereadbase - rCtx!!.inbuflen
+            toberead2 = toberead
+            if (toberead + rCtx!!.sumread > chanklen) {
+                toberead = (chanklen - rCtx!!.sumread).toInt()
+            }
+
+            rCtx!!.inBuffer!!.clear()
+            nsmplread = 0
+            readLen = rCtx!!.bpf * toberead
             try {
                 while (nsmplread < readLen && !EOF) {
-                    tmpLen = fpi.read(rCtx.rawinbuf, nsmplread, readLen - nsmplread);
+                    tmpLen = fpi.read(rCtx!!.rawinbuf, nsmplread, readLen - nsmplread)
                     if (tmpLen < 0) {
-                        EOF = true;
+                        EOF = true
                     } else {
-                        nsmplread += tmpLen;
+                        nsmplread += tmpLen
                     }
                 }
-            } catch (IOException e) {
-                EOF = true;
+            } catch (e: IOException) {
+                EOF = true
             }
-            rCtx.inBuffer.limit(nsmplread);
-            nsmplread /= rCtx.bpf;
-            fillInBuf(rCtx, nsmplread);
-            Arrays.fill(rCtx.inbuf, rCtx.nch * rCtx.inbuflen + nsmplread * rCtx.nch, rCtx.nch * rCtx.inbuflen + rCtx.nch * toberead2, 0);
+            rCtx!!.inBuffer!!.limit(nsmplread)
+            nsmplread /= rCtx!!.bpf
+            fillInBuf(rCtx!!, nsmplread)
+            Arrays.fill(
+                rCtx!!.inbuf,
+                rCtx!!.nch * rCtx!!.inbuflen + nsmplread * rCtx!!.nch,
+                rCtx!!.nch * rCtx!!.inbuflen + rCtx!!.nch * toberead2,
+                0.0
+            )
 
-            rCtx.inbuflen += toberead2;
+            rCtx!!.inbuflen += toberead2
 
-            rCtx.sumread += nsmplread;
-            ending = EOF || rCtx.sumread >= chanklen;
+            rCtx!!.sumread += nsmplread.toLong()
+            ending = EOF || rCtx!!.sumread >= chanklen
 
             //nsmplwrt1 = ((rp-1)*srcSamplingRate/fs1+inbuflen-n1x)*dstSamplingRate*osf/srcSamplingRate;
             //if (nsmplwrt1 > n2b2) nsmplwrt1 = n2b2;
-            nsmplwrt1 = rCtx.nb2;
+            nsmplwrt1 = rCtx!!.nb2
 
-            rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch;
-            nsmplwrt2 = upSample(rCtx, nsmplwrt1);
-            rCtx.rp += nsmplwrt1 * rCtx.sfrqfrqgcd / rCtx.osf;
+            rCtx!!.ip = ((rCtx!!.sfrq * (rCtx!!.rp - 1) + rCtx!!.fs1) / rCtx!!.fs1) * rCtx!!.nch
+            nsmplwrt2 = upSample(rCtx!!, nsmplwrt1)
+            rCtx!!.rp += nsmplwrt1 * rCtx!!.sfrqfrqgcd / rCtx!!.osf
 
-            rCtx.outBuffer.clear();
-            fillOutBuf(rCtx, dbps, gain, nsmplwrt2);
-            rCtx.outBuffer.flip();
+            rCtx!!.outBuffer!!.clear()
+            fillOutBuf(rCtx!!, dbps, gain, nsmplwrt2)
+            rCtx!!.outBuffer!!.flip()
 
-            if (writeOutStream(rCtx, fpo, nsmplwrt2, dbps, ending)) {
-                break;
+            if (writeOutStream(rCtx!!, fpo, nsmplwrt2, dbps, ending)) {
+                break
             }
 
-            rCtx.ds = (rCtx.rp - 1) / rCtx.fs1sfrq;
-            assert (rCtx.inbuflen >= rCtx.ds);
-            System.arraycopy(rCtx.inbuf, rCtx.nch * rCtx.ds, rCtx.inbuf, 0, rCtx.nch * (rCtx.inbuflen - rCtx.ds));
-            rCtx.inbuflen -= rCtx.ds;
-            rCtx.rp -= rCtx.ds * rCtx.fs1sfrq;
-            if ((spcount++ & 7) == 7) {
-                showProgress((double) rCtx.sumread / chanklen);
+            rCtx!!.ds = (rCtx!!.rp - 1) / rCtx!!.fs1sfrq
+            assert(rCtx!!.inbuflen >= rCtx!!.ds)
+            System.arraycopy(
+                rCtx!!.inbuf,
+                rCtx!!.nch * rCtx!!.ds,
+                rCtx!!.inbuf,
+                0,
+                rCtx!!.nch * (rCtx!!.inbuflen - rCtx!!.ds)
+            )
+            rCtx!!.inbuflen -= rCtx!!.ds
+            rCtx!!.rp -= rCtx!!.ds * rCtx!!.fs1sfrq
+            if ((spcount++ and 7) == 7) {
+                showProgress(rCtx!!.sumread.toDouble() / chanklen)
             }
         }
-        showProgress(1);
+        showProgress(1.0)
     }
 
-    private void downsample(InputStream fpi, OutputStream fpo, double gain, long length) throws IOException {
-        int spcount = 0;
-        int nsmplwrt2;
-        boolean ending;
-        int ch;
-        int dbps = rCtx.twopass ? 8 : rCtx.dstFloat ? 4 : rCtx.dbps;
-        long chanklen = length / rCtx.bps / rCtx.rnch;
+    @Throws(IOException::class)
+    private fun downsample(fpi: InputStream, fpo: OutputStream, gain: Double, length: Long) {
+        var spcount = 0
+        var nsmplwrt2: Int
+        var ending: Boolean
+        var ch: Int
+        val dbps = if (rCtx!!.twopass) 8 else if (rCtx!!.dstFloat) 4 else rCtx!!.dbps
+        val chanklen = length / rCtx!!.bps / rCtx!!.rnch
 
-        rCtx.sumread = rCtx.sumwrite = 0;
+        rCtx!!.sumwrite = 0
+        rCtx!!.sumread = rCtx!!.sumwrite
 
-        int nsmplread, toberead, readLen, tmpLen;
-        boolean EOF = false;
+        var nsmplread: Int
+        var toberead: Int
+        var readLen: Int
+        var tmpLen: Int
+        var EOF = false
 
-        for (;;) {
-            toberead = (rCtx.nb2 - rCtx.rps - 1) / rCtx.osf + 1;
-            if (toberead + rCtx.sumread > chanklen) {
-                toberead = (int) (chanklen - rCtx.sumread);
+        while (true) {
+            toberead = (rCtx!!.nb2 - rCtx!!.rps - 1) / rCtx!!.osf + 1
+            if (toberead + rCtx!!.sumread > chanklen) {
+                toberead = (chanklen - rCtx!!.sumread).toInt()
             }
 
-            rCtx.inBuffer.clear();
-            nsmplread = 0;
-            readLen = rCtx.bpf * toberead;
+            rCtx!!.inBuffer!!.clear()
+            nsmplread = 0
+            readLen = rCtx!!.bpf * toberead
             try {
                 while (nsmplread < readLen && !EOF) {
-                    tmpLen = fpi.read(rCtx.rawinbuf, nsmplread, readLen - nsmplread);
+                    tmpLen = fpi.read(rCtx!!.rawinbuf, nsmplread, readLen - nsmplread)
                     if (tmpLen < 0) {
-                        EOF = true;
+                        EOF = true
                     } else {
-                        nsmplread += tmpLen;
+                        nsmplread += tmpLen
                     }
                 }
-            } catch (IOException e) {
-                EOF = true;
+            } catch (e: IOException) {
+                EOF = true
             }
-            rCtx.inBuffer.limit(nsmplread);
-            nsmplread /= rCtx.bpf;
-            fillInBuf(rCtx, nsmplread);
-            Arrays.fill(rCtx.inbuf, nsmplread * rCtx.nch, rCtx.nch * toberead, 0);
+            rCtx!!.inBuffer!!.limit(nsmplread)
+            nsmplread /= rCtx!!.bpf
+            fillInBuf(rCtx!!, nsmplread)
+            Arrays.fill(rCtx!!.inbuf, nsmplread * rCtx!!.nch, rCtx!!.nch * toberead, 0.0)
 
-            rCtx.sumread += nsmplread;
-            ending = EOF || rCtx.sumread >= chanklen;
+            rCtx!!.sumread += nsmplread.toLong()
+            ending = EOF || rCtx!!.sumread >= chanklen
 
-            nsmplwrt2 = downSample(rCtx);
+            nsmplwrt2 = downSample(rCtx!!)
 
-            rCtx.rp += nsmplwrt2 * rCtx.fs2dfrq;
+            rCtx!!.rp += nsmplwrt2 * rCtx!!.fs2dfrq
 
-            rCtx.outBuffer.clear();
-            fillOutBuf(rCtx, dbps, gain, nsmplwrt2);
-            rCtx.outBuffer.flip();
-            if (writeOutStream(rCtx, fpo, nsmplwrt2, dbps, ending)) {
-                break;
+            rCtx!!.outBuffer!!.clear()
+            fillOutBuf(rCtx!!, dbps, gain, nsmplwrt2)
+            rCtx!!.outBuffer!!.flip()
+            if (writeOutStream(rCtx!!, fpo, nsmplwrt2, dbps, ending)) {
+                break
             }
 
-            rCtx.ds = (rCtx.rp - 1) / rCtx.fs2fs1;
-            if (rCtx.ds > rCtx.nb2) {
-                rCtx.ds = rCtx.nb2;
+            rCtx!!.ds = (rCtx!!.rp - 1) / rCtx!!.fs2fs1
+            if (rCtx!!.ds > rCtx!!.nb2) {
+                rCtx!!.ds = rCtx!!.nb2
             }
-            for (ch = 0; ch < rCtx.nch; ch++) {
-                System.arraycopy(rCtx.buf2[ch], rCtx.ds, rCtx.buf2[ch], 0, rCtx.nx + 1 + rCtx.nb2 - rCtx.ds);
+            ch = 0
+            while (ch < rCtx!!.nch) {
+                System.arraycopy(rCtx!!.buf2[ch], rCtx!!.ds, rCtx!!.buf2[ch], 0, rCtx!!.nx + 1 + rCtx!!.nb2 - rCtx!!.ds)
+                ch++
             }
-            rCtx.rp -= rCtx.ds * rCtx.fs2fs1;
-            for (ch = 0; ch < rCtx.nch; ch++) {
-                System.arraycopy(rCtx.buf1[ch], rCtx.nb2, rCtx.buf2[ch], rCtx.nx + 1, rCtx.nb2);
+            rCtx!!.rp -= rCtx!!.ds * rCtx!!.fs2fs1
+            ch = 0
+            while (ch < rCtx!!.nch) {
+                System.arraycopy(rCtx!!.buf1[ch], rCtx!!.nb2, rCtx!!.buf2[ch], rCtx!!.nx + 1, rCtx!!.nb2)
+                ch++
             }
-            if ((spcount++ & 7) == 7) {
-                showProgress((double) rCtx.sumread / chanklen);
+            if ((spcount++ and 7) == 7) {
+                showProgress(rCtx!!.sumread.toDouble() / chanklen)
             }
         }
 
-        showProgress(1);
+        showProgress(1.0)
     }
 
-    private void no_src(InputStream fpi, OutputStream fpo, double gain, long length) throws IOException {
-        int ch, sumread = 0, readLen, tmpLen;
-        double f, p;
-        long chunklen = length / rCtx.bps / rCtx.rnch;
-        int j = 0;
-        if (rCtx.nch == 1 && rCtx.rnch != rCtx.nch) {
-            j = rCtx.mono;
+    @Throws(IOException::class)
+    private fun no_src(fpi: InputStream, fpo: OutputStream, gain: Double, length: Long) {
+        var ch: Int
+        var sumread = 0
+        var readLen: Int
+        var tmpLen: Int
+        var f: Double
+        var p: Double
+        val chunklen = length / rCtx!!.bps / rCtx!!.rnch
+        var j = 0
+        if (rCtx!!.nch == 1 && rCtx!!.rnch != rCtx!!.nch) {
+            j = rCtx!!.mono
         }
 
         while (sumread < chunklen) {
             try {
-                rCtx.inBuffer.clear();
-                readLen = 0;
-                while (readLen < rCtx.bps * rCtx.rnch) {
-                    tmpLen = fpi.read(rCtx.rawinbuf, readLen, rCtx.bps * rCtx.rnch - readLen);
+                rCtx!!.inBuffer!!.clear()
+                readLen = 0
+                while (readLen < rCtx!!.bps * rCtx!!.rnch) {
+                    tmpLen = fpi.read(rCtx!!.rawinbuf, readLen, rCtx!!.bps * rCtx!!.rnch - readLen)
                     if (tmpLen < 0) {
-                        throw new EOFException();
+                        throw EOFException()
                     }
-                    readLen += tmpLen;
+                    readLen += tmpLen
                 }
-            } catch (EOFException ignored) {
+            } catch (ignored: EOFException) {
             }
-            rCtx.outBuffer.clear();
+            rCtx!!.outBuffer!!.clear()
+
+            if (rCtx!!.twopass) {
+                ch = 0
+                while (ch < rCtx!!.nch) {
+                    f = readFromInBuffer(rCtx!!, (ch + j) * rCtx!!.bps) * gain
+                    p = if (f > 0) f else -f
+                    rCtx!!.peak = if (rCtx!!.peak < p) p else rCtx!!.peak
+                    rCtx!!.outBuffer!!.putDouble(f)
+                    ch++
+                }
+                fpo.write(rCtx!!.rawoutbuf, 0, 8 * rCtx!!.nch)
+            } else {
+                ch = 0
+                while (ch < rCtx!!.dnch) {
+                    f = readFromInBuffer(rCtx!!, (ch % rCtx!!.nch + j) * rCtx!!.bps) * gain
+                    writeToOutBuffer(rCtx!!, f, (ch % rCtx!!.nch))
+                    ch++
+                }
+                fpo.write(rCtx!!.rawoutbuf, 0, rCtx!!.dbps * rCtx!!.dnch)
+            }
+
+            sumread++
+
+            if ((sumread and 0x3ffff) == 0) {
+                showProgress(sumread.toDouble() / chunklen)
+            }
+        }
+
+        fpo.flush()
+        showProgress(1.0)
+    }
+
+    fun resetShaper() {
+        rCtx!!.randptr = 0
+    }
+
+    fun doubleToBytes(d: Double, ch: Int, ob: ByteBuffer) {
+        var s: Int
+        when (rCtx!!.dbps) {
+            1 -> {
+                s = if (rCtx!!.dither > 0) do_shaping(rCtx!!, d, ch) else RINT(d)
+                ob.put((s + 128).toByte())
+            }
+
+            2 -> {
+                s = if (rCtx!!.dither > 0) do_shaping(rCtx!!, d, ch) else RINT(d)
+                ob.putShort(s.toShort())
+            }
+
+            3 -> {
+                s = if (rCtx!!.dither > 0) do_shaping(rCtx!!, d, ch) else RINT(d)
+                if (rCtx!!.dstFloat) {
+                    ob.putFloat(((1.0 / 0x7fffff) * s).toFloat())
+                } else {
+                    ob.putShort(s.toShort())
+                    s = s shr 16
+                    ob.put(s.toByte())
+                }
+            }
+        }
+    }
+
+    fun calcSecondPassGain(): Double {
+        if (!rCtx!!.normalize) {
+            if (rCtx!!.peak < rCtx!!.gain) {
+                rCtx!!.peak = 1.0
+            } else {
+                rCtx!!.peak *= 10.0.pow(-log10(rCtx!!.gain))
+            }
+        } else {
+            rCtx!!.peak *= 10.0.pow(-log10(rCtx!!.gain))
+        }
+
+        if (rCtx!!.dither > 0) {
+            when (rCtx!!.dbps) {
+                1 -> return if ((rCtx!!.normalize || rCtx!!.peak >= (0x7f - rCtx!!.ditherSample) / (0x7f).toDouble())) 1 / rCtx!!.peak * (0x7f - rCtx!!.ditherSample) else 1 / rCtx!!.peak * 0x7f
+                2 -> return if ((rCtx!!.normalize || rCtx!!.peak >= (0x7fff - rCtx!!.ditherSample) / (0x7fff).toDouble())) 1 / rCtx!!.peak * (0x7fff - rCtx!!.ditherSample) else 1 / rCtx!!.peak * 0x7fff
+                3 -> return if ((rCtx!!.normalize || rCtx!!.peak >= (0x7fffff - rCtx!!.ditherSample) / (0x7fffff).toDouble())) 1 / rCtx!!.peak * (0x7fffff - rCtx!!.ditherSample) else 1 / rCtx!!.peak * 0x7fffff
+            }
+        } else {
+            when (rCtx!!.dbps) {
+                1 -> return 1 / rCtx!!.peak * 0x7f
+                2 -> return 1 / rCtx!!.peak * 0x7fff
+                3 -> return 1 / rCtx!!.peak * 0x7fffff
+            }
+        }
+        return 1.0
+    }
+
+    fun resample(samples: Array<FloatArray>, length: Int, isLast: Boolean): Int {
+        checkNotNull(rCtx) { "Resampler has not been initialized" }
+
+        check(rCtx!!.srcFloat) { "Source is not set to floating point" }
+
+        return if (rCtx!!.sfrq < rCtx!!.dfrq) {
+            upsample(rCtx!!, samples, length, rCtx!!.gain, isLast)
+        } else if (rCtx!!.sfrq > rCtx!!.dfrq) {
+            downsample(rCtx!!, samples, length, rCtx!!.gain, isLast)
+        } else {
+            no_src(rCtx!!, samples, length, rCtx!!.gain)
+        }
+    }
+
+    fun resample(samples: Array<IntArray>, length: Int, isLast: Boolean): Int {
+        checkNotNull(rCtx) { "Resampler has not been initialized" }
+
+        return if (rCtx!!.sfrq < rCtx!!.dfrq) {
+            upsample(rCtx!!, samples, length, rCtx!!.gain, isLast)
+        } else if (rCtx!!.sfrq > rCtx!!.dfrq) {
+            downsample(rCtx!!, samples, length, rCtx!!.gain, isLast)
+        } else {
+            no_src(rCtx!!, samples, length, rCtx!!.gain)
+        }
+    }
+
+    fun resample(samples: ByteArray, offset: Int, length: Int, isLast: Boolean): Int {
+        checkNotNull(rCtx) { "Resampler has not been initialized" }
+
+        return if (rCtx!!.sfrq < rCtx!!.dfrq) {
+            upsample(rCtx!!, samples, offset, length, rCtx!!.gain, isLast)
+        } else if (rCtx!!.sfrq > rCtx!!.dfrq) {
+            downsample(rCtx!!, samples, offset, length, rCtx!!.gain, isLast)
+        } else {
+            no_src(rCtx!!, samples, offset, length, rCtx!!.gain)
+        }
+    }
+
+    @Throws(IOException::class)
+    fun resample(fpi: InputStream, fpo: OutputStream, length: Long): Double {
+        checkNotNull(rCtx) { "Resampler has not been initialized" }
+
+        if (rCtx!!.twopass) {
+            val tmpFile: File
+            if (rCtx!!.tmpFn != null) {
+                tmpFile = File(rCtx!!.tmpFn!!)
+            } else {
+                tmpFile = File.createTempFile("JavaSSRC_", null)
+                tmpFile.deleteOnExit()
+            }
+            val fpt = FileOutputStream(tmpFile)
+
+            showMessage("Pass 1")
+            try {
+                if (rCtx!!.normalize) {
+                    if (rCtx!!.sfrq < rCtx!!.dfrq) {
+                        upsample(fpi, fpt, 1.0, length)
+                    } else if (rCtx!!.sfrq > rCtx!!.dfrq) {
+                        downsample(fpi, fpt, 1.0, length)
+                    } else {
+                        no_src(BufferedInputStream(fpi), BufferedOutputStream(fpt), 1.0, length)
+                    }
+                } else {
+                    if (rCtx!!.sfrq < rCtx!!.dfrq) {
+                        upsample(fpi, fpt, rCtx!!.gain, length)
+                    } else if (rCtx!!.sfrq > rCtx!!.dfrq) {
+                        downsample(fpi, fpt, rCtx!!.gain, length)
+                    } else {
+                        no_src(BufferedInputStream(fpi), BufferedOutputStream(fpt), rCtx!!.gain, length)
+                    }
+                }
+
+                fpt.close()
+            } catch (e: IOException) {
+                throw IOException("Error processing audio data", e)
+            }
+
+            showMessage(String.format("\npeak : %gdB", 20 * log10(rCtx!!.peak)))
+
+            showMessage("\nPass 2")
+
+            val secondPassGain = calcSecondPassGain()
+
+            resetShaper()
+
+            val fptlen = tmpFile.length() / (8 * rCtx!!.nch)
+            var sumread = 0
+            var ch: Int
+            var inStrm: DataInputStream? = null
+            var outStrm: BufferedOutputStream? = null
+            try {
+                inStrm = DataInputStream(BufferedInputStream(FileInputStream(tmpFile)))
+                outStrm = BufferedOutputStream(fpo)
+                val ibuf = ByteArray(8 * rCtx!!.nch)
+                val bb = ByteBuffer.wrap(ibuf).order(ByteOrder.LITTLE_ENDIAN)
+                val db = bb.asDoubleBuffer()
+                var f: Double
+
+                while (true) {
+                    try {
+                        inStrm.readFully(ibuf)
+                    } catch (e: EOFException) {
+                        break
+                    }
+                    bb.clear()
+                    ch = 0
+                    while (ch < rCtx!!.dnch) {
+                        f = db[ch % rCtx!!.nch] * secondPassGain
+                        doubleToBytes(f, ch % rCtx!!.nch, bb)
+                        ch++
+                    }
+                    outStrm.write(bb.array(), 0, bb.position())
+                    sumread++
+
+                    if ((sumread and 0x3ffff) == 0) {
+                        listener!!.onChanged(sumread.toDouble() / fptlen)
+                    }
+                }
+                showProgress(1.0)
+            } catch (e1: FileNotFoundException) {
+                throw FileNotFoundException("Error opening temp file")
+            } catch (e: IOException) {
+                throw IOException("Error processing temp file", e)
+            } finally {
+                try {
+                    outStrm?.flush()
+                } catch (ignored: IOException) {
+                }
+                try {
+                    inStrm?.close()
+                } catch (ignored: IOException) {
+                }
+                try {
+                    tmpFile.delete()
+                } catch (e: Exception) {
+                    showMessage(String.format("Failed to delete temp file %s", rCtx!!.tmpFn))
+                }
+            }
+        } else {
+            val outStrm = BufferedOutputStream(fpo)
+            try {
+                if (rCtx!!.sfrq < rCtx!!.dfrq) {
+                    upsample(fpi, outStrm, rCtx!!.gain, length)
+                } else if (rCtx!!.sfrq > rCtx!!.dfrq) {
+                    downsample(fpi, outStrm, rCtx!!.gain, length)
+                } else {
+                    no_src(BufferedInputStream(fpi), outStrm, rCtx!!.gain, length)
+                }
+            } catch (e: IOException) {
+                throw IOException("Error processing audio data", e)
+            } finally {
+                outStrm.flush()
+            }
+        }
+        return rCtx!!.peak
+    }
+
+    companion object {
+        //	private static final boolean DEBUG = false; 
+        const val VERSION: String = "1.40"
+        private const val RANDBUFLEN = 65536
+
+        private val scoeflen = intArrayOf(1, 16, 20, 16, 16, 15, 16, 15)
+        private val samp = intArrayOf(8, 18, 27, 8, 8, 8, 10, 9)
+        private val scoeffreq = intArrayOf(0, 48000, 44100, 37800, 32000, 22050, 48000, 44100)
+
+        private val shapercoefs = arrayOf(
+            doubleArrayOf(-1.0),  /* triangular dither */
+            doubleArrayOf(
+                -2.8720729351043701172, 5.0413231849670410156, -6.2442994117736816406, 5.8483986854553222656,
+                -3.7067542076110839844, 1.0495119094848632812, 1.1830236911773681641, -2.1126792430877685547,
+                1.9094531536102294922, -0.99913084506988525391, 0.17090806365013122559, 0.32615602016448974609,
+                -0.39127644896507263184, 0.26876461505889892578, -0.097676105797290802002, 0.023473845794796943665,
+            ),
+            /* 48k, N=16, amp=18 */
+            doubleArrayOf(
+                -2.6773197650909423828, 4.8308925628662109375, -6.570110321044921875, 7.4572014808654785156,
+                -6.7263274192810058594, 4.8481650352478027344, -2.0412089824676513672, -0.7006359100341796875,
+                2.9537565708160400391, -4.0800385475158691406, 4.1845216751098632812, -3.3311812877655029297,
+                2.1179926395416259766, -0.879302978515625, 0.031759146600961685181, 0.42382788658142089844,
+                -0.47882103919982910156, 0.35490813851356506348, -0.17496839165687561035, 0.060908168554306030273,
+            ),
+            /* 44.1k, N=20, amp=27 */
+            doubleArrayOf(
+                -1.6335992813110351562, 2.2615492343902587891, -2.4077029228210449219, 2.6341717243194580078,
+                -2.1440362930297851562, 1.8153258562088012695, -1.0816224813461303711, 0.70302653312683105469,
+                -0.15991993248462677002, -0.041549518704414367676, 0.29416576027870178223, -0.2518316805362701416,
+                0.27766478061676025391, -0.15785403549671173096, 0.10165894031524658203, -0.016833892092108726501,
+            ),
+            /* 37.8k, N=16 */
+            doubleArrayOf(
+                -0.82901298999786376953, 0.98922657966613769531, -0.59825712442398071289, 1.0028809309005737305,
+                -0.59938216209411621094, 0.79502451419830322266, -0.42723315954208374023, 0.54492527246475219727,
+                -0.30792605876922607422, 0.36871799826622009277, -0.18792048096656799316, 0.2261127084493637085,
+                -0.10573341697454452515, 0.11435490846633911133, -0.038800679147243499756, 0.040842197835445404053,
+            ),
+            /* 32k, N=16 */
+            doubleArrayOf(
+                -0.065229974687099456787, 0.54981261491775512695, 0.40278548002243041992, 0.31783768534660339355,
+                0.28201797604560852051, 0.16985194385051727295, 0.15433363616466522217, 0.12507140636444091797,
+                0.08903945237398147583, 0.064410120248794555664, 0.047146003693342208862, 0.032805237919092178345,
+                0.028495194390416145325, 0.011695005930960178375, 0.011831838637590408325,
+            ),
+            /* 22.05k, N=15 */
+            doubleArrayOf(
+                -2.3925774097442626953, 3.4350297451019287109, -3.1853709220886230469, 1.8117271661758422852,
+                0.20124770700931549072, -1.4759907722473144531, 1.7210904359817504883, -0.97746700048446655273,
+                0.13790138065814971924, 0.38185903429985046387, -0.27421241998672485352, -0.066584214568138122559,
+                0.35223302245140075684, -0.37672343850135803223, 0.23964276909828186035, -0.068674825131893157959,
+            ),
+            /* 48k, N=16, amp=10 */
+            doubleArrayOf(
+                -2.0833916664123535156, 3.0418450832366943359, -3.2047898769378662109, 2.7571926116943359375,
+                -1.4978630542755126953, 0.3427594602108001709, 0.71733748912811279297, -1.0737057924270629883,
+                1.0225815773010253906, -0.56649994850158691406, 0.20968692004680633545, 0.065378531813621520996,
+                -0.10322438180446624756, 0.067442022264003753662, 0.00495197344571352005,
+            ),
+            /* 44.1k, N=15, amp=9 */
+        )
+
+        private fun RINT(x: Double): Int {
+            return (if ((x) >= 0) (((x) + 0.5).toInt()) else (((x) - 0.5).toInt()))
+        }
+
+        private val noiseAmpPresets = doubleArrayOf(0.7, 0.9, 0.18)
+
+        private const val POOLSIZE = 97
+
+        private val NORMALIZE_FACTOR_8: Double = 1.0 / 0x7f
+        private val NORMALIZE_FACTOR_16: Double = 1.0 / 0x7fff
+        private val NORMALIZE_FACTOR_24: Double = 1.0 / 0x7fffff
+        private val NORMALIZE_FACTOR_32: Double = 1.0 / 0x7fffffff
+
+        private fun reset(rCtx: ResampleContext) {
+            rCtx.init = true
+            rCtx.sumwrite = 0
+            rCtx.sumread = rCtx.sumwrite
+            rCtx.osc = 0
+            rCtx.ds = rCtx.osc
+            rCtx.rps = rCtx.ds
+            rCtx.rp = rCtx.rps
+            rCtx.sp = rCtx.rp
+            rCtx.peak = 0.0
+
+            rCtx.fft!!.reset()
+            rCtx.fft!!.realDFT(rCtx.stageA)
+
+            for (i in 0 until rCtx.nch) {
+                Arrays.fill(rCtx.buf1[i], 0.0)
+                Arrays.fill(rCtx.buf2[i], 0.0)
+            }
+            rCtx.inBuffer!!.clear()
+            rCtx.outBuffer!!.clear()
+
+            if (rCtx.sfrq < rCtx.dfrq) {
+                rCtx.inbuflen = rCtx.n1 / 2 / (rCtx.fs1 / rCtx.sfrq) + 1
+                rCtx.delay = (rCtx.n2.toDouble() / 2 / (rCtx.fs2 / rCtx.dfrq)).toInt()
+            } else if (rCtx.sfrq > rCtx.dfrq) {
+                rCtx.inbuflen = 0
+                rCtx.delay =
+                    (rCtx.n1.toDouble() / 2 / (rCtx.fs1.toDouble() / rCtx.dfrq) + rCtx.n2.toDouble() / 2 / (rCtx.fs2.toDouble() / rCtx.dfrq)).toInt()
+            }
+        }
+
+        private fun initUpSample(rCtx: ResampleContext) {
+            val filter2len = rCtx.FFTFIRLEN /* stage 2 filter length */
+
+            /* Make stage 1 filter */
+            var lpf: Double
+            var df: Double
+            var iza: Double
+            val guard = 2.0
+            var i: Int
+
+            rCtx.frqgcd = gcd(rCtx.sfrq, rCtx.dfrq)
+
+            rCtx.fs1 = rCtx.sfrq / rCtx.frqgcd * rCtx.dfrq
+
+            rCtx.sfrqfrqgcd = rCtx.sfrq / rCtx.frqgcd
+            rCtx.fs1sfrq = rCtx.fs1 / rCtx.sfrq
+
+            if (rCtx.fs1 / rCtx.dfrq == 1) {
+                rCtx.osf = 1
+            } else if (rCtx.fs1 / rCtx.dfrq % 2 == 0) {
+                rCtx.osf = 2
+            } else if (rCtx.fs1 / rCtx.dfrq % 3 == 0) {
+                rCtx.osf = 3
+            } else {
+                throw UnsupportedOperationException(
+                    String.format(
+                        """
+                        Resampling from %dHz to %dHz is not supported.
+                        %d/gcd(%d,%d)=%d must be divisible by 2 or 3.
+                        """.trimIndent(),
+                        rCtx.sfrq, rCtx.dfrq, rCtx.sfrq, rCtx.sfrq, rCtx.dfrq, rCtx.fs1 / rCtx.dfrq
+                    )
+                )
+            }
+
+            df = (rCtx.dfrq * rCtx.osf / 2 - rCtx.sfrq / 2) * 2 / guard
+            lpf = rCtx.sfrq / 2 + (rCtx.dfrq * rCtx.osf / 2 - rCtx.sfrq / 2) / guard
+
+            var d = if (rCtx.AA <= 21) {
+                0.9222
+            } else {
+                (rCtx.AA - 7.95) / 14.36
+            }
+
+            rCtx.n1 = (rCtx.fs1 / df * d + 1).toInt()
+            if (rCtx.n1 % 2 == 0) {
+                rCtx.n1++
+            }
+
+            var alp = alpha(rCtx)
+            iza = value(alp)
+
+            //printf("iza = %g\n",iza);
+            rCtx.ny = rCtx.fs1 / rCtx.sfrq
+            rCtx.nx = rCtx.n1 / rCtx.ny + 1
+
+            rCtx.fOrder = IntArray(rCtx.ny * rCtx.osf)
+            i = 0
+            while (i < rCtx.ny * rCtx.osf) {
+                rCtx.fOrder[i] =
+                    rCtx.fs1 / rCtx.sfrq - (i * (rCtx.fs1 / (rCtx.dfrq * rCtx.osf))) % (rCtx.fs1 / rCtx.sfrq)
+                if (rCtx.fOrder[i] == rCtx.fs1 / rCtx.sfrq) {
+                    rCtx.fOrder[i] = 0
+                }
+                i++
+            }
+
+            rCtx.fInc = IntArray(rCtx.ny * rCtx.osf)
+            i = 0
+            while (i < rCtx.ny * rCtx.osf) {
+                rCtx.fInc[i] = if (rCtx.fOrder[i] < rCtx.fs1 / (rCtx.dfrq * rCtx.osf)) rCtx.nch else 0
+                if (rCtx.fOrder[i] == rCtx.fs1 / rCtx.sfrq) {
+                    rCtx.fOrder[i] = 0
+                }
+                i++
+            }
+
+            rCtx.stageB = Array(rCtx.ny) { DoubleArray(rCtx.nx) }
+
+            i = -(rCtx.n1 / 2)
+            while (i <= rCtx.n1 / 2) {
+                rCtx.stageB[(i + rCtx.n1 / 2) % rCtx.ny][(i + rCtx.n1 / 2) / rCtx.ny] =
+                    win(i.toDouble(), rCtx.n1, alp, iza) * hn_lpf(i, lpf, rCtx.fs1.toDouble()) * rCtx.fs1 / rCtx.sfrq
+                i++
+            }
+
+            /* Make stage 2 filter */
+            var ipsize: Int
+            var wsize: Int
+
+            d = if (rCtx.AA <= 21) {
+                0.9222
+            } else {
+                (rCtx.AA - 7.95) / 14.36
+            }
+
+            rCtx.fs2 = rCtx.dfrq * rCtx.osf
+
+            i = 1
+            while (true) {
+                rCtx.n2 = filter2len * i
+                if (rCtx.n2 % 2 == 0) {
+                    rCtx.n2--
+                }
+                df = (rCtx.fs2 * d) / (rCtx.n2 - 1)
+                lpf = (rCtx.sfrq / 2).toDouble()
+                if (df < rCtx.DF) {
+                    break
+                }
+                i = i * 2
+            }
+
+            alp = alpha(rCtx)
+
+            iza = value(alp)
+
+            rCtx.nb = 1
+            while (rCtx.nb < rCtx.n2) {
+                rCtx.nb *= 2
+            }
+            rCtx.nb *= 2
+
+            rCtx.stageA = DoubleArray(rCtx.nb)
+
+            i = -(rCtx.n2 / 2)
+            while (i <= rCtx.n2 / 2) {
+                rCtx.stageA[i + rCtx.n2 / 2] =
+                    win(i.toDouble(), rCtx.n2, alp, iza) * hn_lpf(i, lpf, rCtx.fs2.toDouble()) / rCtx.nb * 2
+                i++
+            }
+
+            rCtx.fft!!.init(rCtx.nb)
+            rCtx.fft!!.realDFT(rCtx.stageA)
+
+            /* Apply filters */
+            rCtx.nb2 = rCtx.nb / 2
+
+            rCtx.buf1 = Array(rCtx.nch) { DoubleArray(rCtx.nb2 / rCtx.osf + 1) }
+            rCtx.buf2 = Array(rCtx.nch) { DoubleArray(rCtx.nb) }
+
+            rCtx.rawinbuf = ByteArray(rCtx.rnch * (rCtx.nb2 + rCtx.nx) * rCtx.bps)
 
             if (rCtx.twopass) {
-                for (ch = 0; ch < rCtx.nch; ch++) {
-                    f = readFromInBuffer(rCtx, (ch + j) * rCtx.bps) * gain;
-                    p = f > 0 ? f : -f;
-                    rCtx.peak = rCtx.peak < p ? p : rCtx.peak;
-                    rCtx.outBuffer.putDouble(f);
-                }
-                fpo.write(rCtx.rawoutbuf, 0, 8 * rCtx.nch);
+                rCtx.rawoutbuf = ByteArray(rCtx.nch * (rCtx.nb2 / rCtx.osf + 1) * 8)
             } else {
-                for (ch = 0; ch < rCtx.dnch; ch++) {
-                    f = readFromInBuffer(rCtx, (ch % rCtx.nch + j) * rCtx.bps) * gain;
-                    writeToOutBuffer(rCtx, f, (ch % rCtx.nch));
-                }
-                fpo.write(rCtx.rawoutbuf, 0, rCtx.dbps * rCtx.dnch);
+                rCtx.rawoutbuf =
+                    ByteArray(rCtx.dnch * (rCtx.nb2 / rCtx.osf + 1) * (if (rCtx.dstFloat) 4 else rCtx.dbps))
             }
 
-            sumread++;
+            rCtx.inbuf = DoubleArray(rCtx.nch * (rCtx.nb2 + rCtx.nx))
+            rCtx.outbuf = DoubleArray(rCtx.nch * (rCtx.nb2 / rCtx.osf + 1))
 
-            if ((sumread & 0x3ffff) == 0) {
-                showProgress((double) sumread / chunklen);
-            }
+            rCtx.inbuflen = rCtx.n1 / 2 / (rCtx.fs1 / rCtx.sfrq) + 1
+            rCtx.delay = (rCtx.n2.toDouble() / 2 / (rCtx.fs2 / rCtx.dfrq)).toInt()
+
+            rCtx.inBuffer = ByteBuffer.wrap(rCtx.rawinbuf).order(rCtx.srcByteOrder)
+            rCtx.outBuffer = ByteBuffer.wrap(rCtx.rawoutbuf).order(ByteOrder.LITTLE_ENDIAN)
         }
 
-        fpo.flush();
-        showProgress(1);
-    }
-    /* end Stream input/output */
+        private fun initDownSample(rCtx: ResampleContext) {
+            val filter1len = rCtx.FFTFIRLEN // stage 1 filter length 
 
-    private static double readFromInBuffer(ResampleContext rCtx, int i) {
-        if (rCtx.srcFloat) {
-            return rCtx.inBuffer.getDouble(i);
-        } else {
-            switch (rCtx.bps) {
-                case 1:
-                    return NORMALIZE_FACTOR_8 * (double) (((short) rCtx.inBuffer.get(i) & 0xff) - 128);
-                case 2:
-                    return NORMALIZE_FACTOR_16 * rCtx.inBuffer.getShort(i);
-                case 3:
-                    if (rCtx.srcByteOrder == ByteOrder.LITTLE_ENDIAN) {
-                        return NORMALIZE_FACTOR_24 * (double) (((int) rCtx.inBuffer.getShort(i) & 0xffff) | ((int) rCtx.inBuffer.get(i + 2) << 24) >> 8);
-                    } else {
-                        return NORMALIZE_FACTOR_24 * (double) ((((int) rCtx.inBuffer.get(i) << 24) >> 8) | ((int) rCtx.inBuffer.getShort(i + 1) & 0xffff));
-                    }
-                case 4:
-                    return NORMALIZE_FACTOR_32 * (double) rCtx.inBuffer.getInt(i);
-            }
-        }
-        return 0;
-    }
+            // Make stage 1 filter 
+            var lpf: Double
+            var d: Double
+            var df: Double
+            var alp: Double
+            var iza: Double
+            var ipsize: Int
+            var wsize: Int
+            var i: Int
 
-    private static double intSampleToDouble(ResampleContext rCtx, int sample) {
-        switch (rCtx.bps) {
-            case 1:
-                return NORMALIZE_FACTOR_8 * (double) ((sample & 0xff) - 128);
-            case 2:
-                return NORMALIZE_FACTOR_16 * sample;
-            case 3:
-                return NORMALIZE_FACTOR_24 * sample;
-            case 4:
-                return NORMALIZE_FACTOR_32 * sample;
-        }
-        return 0;
-    }
+            rCtx.frqgcd = gcd(rCtx.sfrq, rCtx.dfrq)
 
-    private static void writeToOutBuffer(ResampleContext rCtx, double f, int ch) {
-        int s;
-        if (rCtx.dstFloat) {
-            rCtx.outBuffer.putFloat((float) f);
-        } else {
-            switch (rCtx.dbps) {
-                case 1:
-                    f *= 0x7f;
-                    s = rCtx.dither > 0 ? do_shaping(rCtx, f, ch) : RINT(f);
-                    rCtx.outBuffer.put((byte) (s + 128));
-                    break;
-                case 2:
-                    f *= 0x7fff;
-                    s = rCtx.dither > 0 ? do_shaping(rCtx, f, ch) : RINT(f);
-                    rCtx.outBuffer.putShort((short) s);
-                    break;
-                case 3:
-                    f *= 0x7fffff;
-                    s = rCtx.dither > 0 ? do_shaping(rCtx, f, ch) : RINT(f);
-                    rCtx.outBuffer.putShort((short) s);
-                    s >>= 16;
-                    rCtx.outBuffer.put((byte) s);
-                    break;
-            }
-        }
-    }
-
-    private static void writeIntToBuffer(ResampleContext rCtx, int sample, double gain) {
-        int s = (int) (sample * gain);
-        switch (rCtx.dbps) {
-            case 1:
-                rCtx.outBuffer.put((byte) s);
-                break;
-            case 2:
-                rCtx.outBuffer.putShort((short) s);
-                break;
-            case 3:
-                rCtx.outBuffer.putShort((short) s);
-                s >>= 16;
-                rCtx.outBuffer.put((byte) s);
-                break;
-        }
-    }
-
-    public void resetShaper() {
-        rCtx.randptr = 0;
-    }
-
-    public void doubleToBytes(double d, int ch, ByteBuffer ob) {
-        int s;
-        switch (rCtx.dbps) {
-            case 1:
-                s = rCtx.dither > 0 ? do_shaping(rCtx, d, ch) : RINT(d);
-                ob.put((byte) (s + 128));
-                break;
-            case 2:
-                s = rCtx.dither > 0 ? do_shaping(rCtx, d, ch) : RINT(d);
-                ob.putShort((short) s);
-                break;
-            case 3:
-                s = rCtx.dither > 0 ? do_shaping(rCtx, d, ch) : RINT(d);
-                if (rCtx.dstFloat) {
-                    ob.putFloat((float) ((1 / (double) 0x7fffff) * s));
-                } else {
-                    ob.putShort((short) s);
-                    s >>= 16;
-                    ob.put((byte) s);
-                }
-                break;
-        }
-    }
-
-    public double calcSecondPassGain() {
-        if (!rCtx.normalize) {
-            if (rCtx.peak < rCtx.gain) {
-                rCtx.peak = 1;
+            if (rCtx.dfrq / rCtx.frqgcd == 1) {
+                rCtx.osf = 1
+            } else if (rCtx.dfrq / rCtx.frqgcd % 2 == 0) {
+                rCtx.osf = 2
+            } else if (rCtx.dfrq / rCtx.frqgcd % 3 == 0) {
+                rCtx.osf = 3
             } else {
-                rCtx.peak *= Math.pow(10, -Math.log10(rCtx.gain));
+                throw UnsupportedOperationException(
+                    String.format(
+                        """
+                        Resampling from %dHz to %dHz is not supported.
+                        %d/gcd(%d,%d)=%d must be divisible by 2 or 3.
+                        """.trimIndent(),
+                        rCtx.sfrq, rCtx.dfrq, rCtx.dfrq, rCtx.sfrq, rCtx.dfrq, rCtx.dfrq / rCtx.frqgcd
+                    )
+                )
             }
-        } else {
-            rCtx.peak *= Math.pow(10, -Math.log10(rCtx.gain));
-        }
 
-        if (rCtx.dither > 0) {
-            switch (rCtx.dbps) {
-                case 1:
-                    return (rCtx.normalize || rCtx.peak >= (0x7f - rCtx.ditherSample) / (double) 0x7f) ? 1 / rCtx.peak * (0x7f - rCtx.ditherSample) : 1 / rCtx.peak * 0x7f;
-                case 2:
-                    return (rCtx.normalize || rCtx.peak >= (0x7fff - rCtx.ditherSample) / (double) 0x7fff) ? 1 / rCtx.peak * (0x7fff - rCtx.ditherSample) : 1 / rCtx.peak * 0x7fff;
-                case 3:
-                    return (rCtx.normalize || rCtx.peak >= (0x7fffff - rCtx.ditherSample) / (double) 0x7fffff) ? 1 / rCtx.peak * (0x7fffff - rCtx.ditherSample) : 1 / rCtx.peak * 0x7fffff;
-            }
-        } else {
-            switch (rCtx.dbps) {
-                case 1:
-                    return 1 / rCtx.peak * 0x7f;
-                case 2:
-                    return 1 / rCtx.peak * 0x7fff;
-                case 3:
-                    return 1 / rCtx.peak * 0x7fffff;
-            }
-        }
-        return 1;
-    }
+            rCtx.fs1 = rCtx.sfrq * rCtx.osf
 
-    public static double dBToGain(double att) {
-        return Math.pow(10, att / 20);
-    }
-
-    public int resample(float[][] samples, int length, boolean isLast) {
-        if (rCtx == null) {
-            throw new IllegalStateException("Resampler has not been initialized");
-        }
-
-        if(!rCtx.srcFloat)
-            throw new IllegalStateException("Source is not set to floating point");
-
-        if (rCtx.sfrq < rCtx.dfrq) {
-            return upsample(rCtx, samples, length, rCtx.gain, isLast);
-        } else if (rCtx.sfrq > rCtx.dfrq) {
-            return downsample(rCtx, samples, length, rCtx.gain, isLast);
-        } else {
-            return no_src(rCtx, samples, length, rCtx.gain);
-        }
-    }
-
-    public int resample(int[][] samples, int length, boolean isLast) {
-        if (rCtx == null) {
-            throw new IllegalStateException("Resampler has not been initialized");
-        }
-
-        if (rCtx.sfrq < rCtx.dfrq) {
-            return upsample(rCtx, samples, length, rCtx.gain, isLast);
-        } else if (rCtx.sfrq > rCtx.dfrq) {
-            return downsample(rCtx, samples, length, rCtx.gain, isLast);
-        } else {
-            return no_src(rCtx, samples, length, rCtx.gain);
-        }
-    }
-
-    public int resample(byte[] samples, int offset, int length, boolean isLast) {
-        if (rCtx == null) {
-            throw new IllegalStateException("Resampler has not been initialized");
-        }
-
-        if (rCtx.sfrq < rCtx.dfrq) {
-            return upsample(rCtx, samples, offset, length, rCtx.gain, isLast);
-        } else if (rCtx.sfrq > rCtx.dfrq) {
-            return downsample(rCtx, samples, offset, length, rCtx.gain, isLast);
-        } else {
-            return no_src(rCtx, samples, offset, length, rCtx.gain);
-        }
-    }
-
-    public double resample(InputStream fpi, OutputStream fpo, long length) throws IOException {
-        if (rCtx == null) {
-            throw new IllegalStateException("Resampler has not been initialized");
-        }
-
-        if (rCtx.twopass) {
-            File tmpFile;
-            FileOutputStream fpt;
-            if (rCtx.tmpFn != null) {
-                tmpFile = new File(rCtx.tmpFn);
+            d = if (rCtx.AA <= 21) {
+                0.9222
             } else {
-                tmpFile = File.createTempFile("JavaSSRC_", null);
-                tmpFile.deleteOnExit();
+                (rCtx.AA - 7.95) / 14.36
             }
-            fpt = new FileOutputStream(tmpFile);
 
-            showMessage("Pass 1");
-            try {
-                if (rCtx.normalize) {
-                    if (rCtx.sfrq < rCtx.dfrq) {
-                        upsample(fpi, fpt, 1, length);
-                    } else if (rCtx.sfrq > rCtx.dfrq) {
-                        downsample(fpi, fpt, 1, length);
-                    } else {
-                        no_src(new BufferedInputStream(fpi), new BufferedOutputStream(fpt), 1, length);
-                    }
+            rCtx.n1 = filter1len
+            i = 1
+            while (true) {
+                rCtx.n1 = filter1len * i
+                if (rCtx.n1 % 2 == 0) {
+                    rCtx.n1--
+                }
+                df = (rCtx.fs1 * d) / (rCtx.n1 - 1)
+                lpf = (rCtx.dfrq - df) / 2
+                if (df < rCtx.DF) {
+                    break
+                }
+                i = i * 2
+            }
+
+            alp = alpha(rCtx)
+
+            iza = value(alp)
+
+            rCtx.nb = 1
+            while (rCtx.nb < rCtx.n1) {
+                rCtx.nb *= 2
+            }
+            rCtx.nb *= 2
+
+            rCtx.stageA = DoubleArray(rCtx.nb)
+
+            i = -(rCtx.n1 / 2)
+            while (i <= rCtx.n1 / 2) {
+                rCtx.stageA[i + rCtx.n1 / 2] = win(i.toDouble(), rCtx.n1, alp, iza) * hn_lpf(
+                    i,
+                    lpf,
+                    rCtx.fs1.toDouble()
+                ) * rCtx.fs1 / rCtx.sfrq / rCtx.nb * 2
+                i++
+            }
+
+            rCtx.fft!!.init(rCtx.nb)
+            rCtx.fft!!.realDFT(rCtx.stageA)
+
+            // Make stage 2 filter 
+            if (rCtx.osf == 1) {
+                rCtx.fs2 = rCtx.sfrq / rCtx.frqgcd * rCtx.dfrq
+                rCtx.n2 = 1
+                rCtx.nx = 1
+                rCtx.ny = rCtx.nx
+                rCtx.fOrder = IntArray(rCtx.ny)
+                rCtx.fInc = IntArray(rCtx.ny)
+                rCtx.fInc[0] = rCtx.sfrq / rCtx.dfrq
+                rCtx.stageB = Array(rCtx.ny) { DoubleArray(rCtx.nx) }
+                rCtx.stageB[0][0] = 1.0
+            } else {
+                val guard = 2.0
+
+                rCtx.fs2 = rCtx.sfrq / rCtx.frqgcd * rCtx.dfrq
+
+                df = (rCtx.fs1 / 2 - rCtx.sfrq / 2) * 2 / guard
+                lpf = rCtx.sfrq / 2 + (rCtx.fs1 / 2 - rCtx.sfrq / 2) / guard
+
+                d = if (rCtx.AA <= 21) {
+                    0.9222
                 } else {
-                    if (rCtx.sfrq < rCtx.dfrq) {
-                        upsample(fpi, fpt, rCtx.gain, length);
-                    } else if (rCtx.sfrq > rCtx.dfrq) {
-                        downsample(fpi, fpt, rCtx.gain, length);
+                    (rCtx.AA - 7.95) / 14.36
+                }
+
+                rCtx.n2 = (rCtx.fs2 / df * d + 1).toInt()
+                if (rCtx.n2 % 2 == 0) {
+                    rCtx.n2++
+                }
+
+                alp = alpha(rCtx)
+                iza = value(alp)
+
+                rCtx.ny = rCtx.fs2 / rCtx.fs1 // 0�Ǥʤ�����ץ뤬fs2�ǲ�����ץ뤪���ˤ��뤫��
+                rCtx.nx = rCtx.n2 / rCtx.ny + 1
+
+                rCtx.fOrder = IntArray(rCtx.ny)
+                i = 0
+                while (i < rCtx.ny) {
+                    rCtx.fOrder[i] = rCtx.fs2 / rCtx.fs1 - (i * (rCtx.fs2 / rCtx.dfrq)) % (rCtx.fs2 / rCtx.fs1)
+                    if (rCtx.fOrder[i] == rCtx.fs2 / rCtx.fs1) {
+                        rCtx.fOrder[i] = 0
+                    }
+                    i++
+                }
+
+                rCtx.fInc = IntArray(rCtx.ny)
+                i = 0
+                while (i < rCtx.ny) {
+                    rCtx.fInc[i] = (rCtx.fs2 / rCtx.dfrq - rCtx.fOrder[i]) / (rCtx.fs2 / rCtx.fs1) + 1
+                    if (rCtx.fOrder[if (i + 1 == rCtx.ny) 0 else i + 1] == 0) {
+                        rCtx.fInc[i]--
+                    }
+                    i++
+                }
+
+                rCtx.stageB = Array(rCtx.ny) { DoubleArray(rCtx.nx) }
+                i = -(rCtx.n2 / 2)
+                while (i <= rCtx.n2 / 2) {
+                    rCtx.stageB[(i + rCtx.n2 / 2) % rCtx.ny][(i + rCtx.n2 / 2) / rCtx.ny] =
+                        win(i.toDouble(), rCtx.n2, alp, iza) * hn_lpf(i, lpf, rCtx.fs2.toDouble()) * rCtx.fs2 / rCtx.fs1
+                    i++
+                }
+            }
+
+            rCtx.fs2fs1 = rCtx.fs2 / rCtx.fs1
+            rCtx.fs2dfrq = rCtx.fs2 / rCtx.dfrq
+
+            rCtx.nb2 = rCtx.nb / 2
+
+            rCtx.buf1 = Array(rCtx.nch) { DoubleArray(rCtx.nb) }
+            rCtx.buf2 = Array(rCtx.nch) { DoubleArray(rCtx.nx + 1 + rCtx.nb2) }
+
+            rCtx.rawinbuf = ByteArray((rCtx.nb2 / rCtx.osf + rCtx.osf + 1) * rCtx.rnch * rCtx.bps)
+
+            if (rCtx.twopass) {
+                rCtx.rawoutbuf = ByteArray(((rCtx.nb2.toDouble() * rCtx.sfrq / rCtx.dfrq + 1) * 8 * rCtx.nch).toInt())
+            } else {
+                rCtx.rawoutbuf =
+                    ByteArray(((rCtx.nb2.toDouble() * rCtx.sfrq / rCtx.dfrq + 1) * (if (rCtx.dstFloat) 4 else rCtx.dbps) * rCtx.dnch).toInt())
+            }
+
+            rCtx.inbuf = DoubleArray(rCtx.nch * (rCtx.nb2 / rCtx.osf + rCtx.osf + 1))
+            rCtx.outbuf = DoubleArray((rCtx.nch * (rCtx.nb2.toDouble() * rCtx.sfrq / rCtx.dfrq + 1)).toInt())
+
+            rCtx.inBuffer = ByteBuffer.wrap(rCtx.rawinbuf).order(rCtx.srcByteOrder)
+            rCtx.outBuffer = ByteBuffer.wrap(rCtx.rawoutbuf).order(ByteOrder.LITTLE_ENDIAN)
+
+            rCtx.delay =
+                (rCtx.n1.toDouble() / 2 / (rCtx.fs1.toDouble() / rCtx.dfrq) + rCtx.n2.toDouble() / 2 / (rCtx.fs2.toDouble() / rCtx.dfrq)).toInt()
+        }
+
+        private fun do_shaping(rCtx: ResampleContext, s: Double, ch: Int): Int {
+            var s1 = s
+
+            if (rCtx.dither == 1) {
+                s1 += rCtx.randbuf[rCtx.randptr++ and (RANDBUFLEN - 1)]
+
+                if (s1 < rCtx.shaper_clipmin) {
+                    val d = s1 / rCtx.shaper_clipmin
+                    rCtx.peak = if (rCtx.peak < d) d else rCtx.peak
+                    s1 = rCtx.shaper_clipmin.toDouble()
+                }
+                if (s1 > rCtx.shaper_clipmax) {
+                    val d = s1 / rCtx.shaper_clipmax
+                    rCtx.peak = if (rCtx.peak < d) d else rCtx.peak
+                    s1 = rCtx.shaper_clipmax.toDouble()
+                }
+
+                return RINT(s1)
+            }
+
+            var h = 0.0
+            var i = 0
+            while (i < rCtx.shaper_len) {
+                h += shapercoefs[rCtx.shaper_type][i] * rCtx.shapebuf[ch][i]
+                i++
+            }
+            s1 += h
+            val u = s1
+            s1 += rCtx.randbuf[rCtx.randptr++ and (RANDBUFLEN - 1)]
+
+            i = rCtx.shaper_len - 2
+            while (i >= 0) {
+                rCtx.shapebuf[ch][i + 1] = rCtx.shapebuf[ch][i]
+                i--
+            }
+
+            if (s1 < rCtx.shaper_clipmin) {
+                val d = s1 / rCtx.shaper_clipmin
+                rCtx.peak = if (rCtx.peak < d) d else rCtx.peak
+                s1 = rCtx.shaper_clipmin.toDouble()
+                rCtx.shapebuf[ch][0] = s1 - u
+
+                if (rCtx.shapebuf[ch][0] > 1) {
+                    rCtx.shapebuf[ch][0] = 1.0
+                }
+                if (rCtx.shapebuf[ch][0] < -1) {
+                    rCtx.shapebuf[ch][0] = -1.0
+                }
+            } else if (s1 > rCtx.shaper_clipmax) {
+                val d = s1 / rCtx.shaper_clipmax
+                rCtx.peak = if (rCtx.peak < d) d else rCtx.peak
+                s1 = rCtx.shaper_clipmax.toDouble()
+                rCtx.shapebuf[ch][0] = s1 - u
+
+                if (rCtx.shapebuf[ch][0] > 1) {
+                    rCtx.shapebuf[ch][0] = 1.0
+                }
+                if (rCtx.shapebuf[ch][0] < -1) {
+                    rCtx.shapebuf[ch][0] = -1.0
+                }
+            } else {
+                s1 = RINT(s1).toDouble()
+                rCtx.shapebuf[ch][0] = s1 - u
+            }
+
+            return s1.toInt()
+        }
+
+        private fun alpha(rCtx: ResampleContext): Double {
+            if (rCtx.AA <= 21) {
+                return 0.0
+            }
+            if (rCtx.AA <= 50) {
+                return 0.5842 * (rCtx.AA - 21).pow(0.4) + 0.07886 * (rCtx.AA - 21)
+            }
+            return 0.1102 * (rCtx.AA - 8.7)
+        }
+
+        private fun win(n: Double, len: Int, alp: Double, iza: Double): Double {
+            return value(alp * sqrt(1 - 4 * n * n / ((len.toDouble() - 1) * (len.toDouble() - 1)))) / iza
+        }
+
+        private fun sinc(x: Double): Double {
+            return if (x == 0.0) 1.0 else sin(x) / x
+        }
+
+        private fun hn_lpf(n: Int, lpf: Double, fs: Double): Double {
+            val t = 1 / fs
+            val omega = 2 * Math.PI * lpf
+            return 2 * lpf * t * sinc(n * omega * t)
+        }
+
+        private fun gcd(x: Int, y: Int): Int {
+            var x1 = x
+            var y1 = y
+            var t: Int
+
+            while (y1 != 0) {
+                t = x1 % y1
+                x1 = y1
+                y1 = t
+            }
+            return x1
+        }
+
+        private fun fillInBuf(rCtx: ResampleContext, samples: Array<FloatArray>, offset: Int, length: Int): Int {
+            val ibOffset = rCtx.nch * rCtx.inbuflen
+            val len = length * rCtx.nch
+            var j = 0
+            if (rCtx.nch == 1 && rCtx.rnch != rCtx.nch) {
+                j = rCtx.mono
+            }
+            for (i in 0 until len) {
+                rCtx.inbuf[ibOffset + i] = samples[i % rCtx.nch + j][offset + i / rCtx.nch].toDouble()
+            }
+            return length
+        }
+
+        private fun fillInBuf(rCtx: ResampleContext, samples: Array<IntArray>, offset: Int, length: Int): Int {
+            val ibOffset = rCtx.nch * rCtx.inbuflen
+            val len = length * rCtx.nch
+            var j = 0
+            if (rCtx.nch == 1 && rCtx.rnch != rCtx.nch) {
+                j = rCtx.mono
+            }
+
+            when (rCtx.bps) {
+                1 -> {
+                    var i = 0
+                    while (i < len) {
+                        rCtx.inbuf[ibOffset + i] =
+                            NORMALIZE_FACTOR_8 * ((samples[i % rCtx.nch + j][offset + i / rCtx.nch] and 0xff) - 128)
+                        i++
+                    }
+                }
+
+                2 -> {
+                    var i = 0
+                    while (i < len) {
+                        rCtx.inbuf[ibOffset + i] =
+                            NORMALIZE_FACTOR_16 * samples[i % rCtx.nch + j][offset + i / rCtx.nch]
+                        i++
+                    }
+                }
+
+                3 -> {
+                    var i = 0
+                    while (i < len) {
+                        rCtx.inbuf[ibOffset + i] =
+                            NORMALIZE_FACTOR_24 * samples[i % rCtx.nch + j][offset + i / rCtx.nch]
+                        i++
+                    }
+                }
+
+                4 -> {
+                    var i = 0
+                    while (i < len) {
+                        rCtx.inbuf[ibOffset + i] =
+                            NORMALIZE_FACTOR_32 * samples[i % rCtx.nch + j][offset + i / rCtx.nch]
+                        i++
+                    }
+                }
+            }
+            return length
+        }
+
+        private fun fillInBuf(rCtx: ResampleContext, length: Int) {
+            val offset = rCtx.nch * rCtx.inbuflen
+            val len = length * rCtx.nch
+            var j = 0
+            var jCnt = rCtx.bps
+            if (rCtx.nch == 1 && rCtx.rnch != rCtx.nch) {
+                j = rCtx.mono * rCtx.bps
+                jCnt = rCtx.rnch * rCtx.bps
+            }
+            if (rCtx.srcFloat) {
+                var i = 0
+                while (i < len) {
+                    rCtx.inbuf[offset + i] = rCtx.inBuffer!!.getDouble(j)
+                    i++
+                    j += jCnt
+                }
+            } else {
+                when (rCtx.bps) {
+                    1 -> {
+                        var i = 0
+                        while (i < len) {
+                            rCtx.inbuf[offset + i] =
+                                NORMALIZE_FACTOR_8 * ((rCtx.inBuffer!![j].toShort().toInt() and 0xff) - 128).toDouble()
+                            i++
+                            j += jCnt
+                        }
+                    }
+
+                    2 -> {
+                        var i = 0
+                        while (i < len) {
+                            rCtx.inbuf[offset + i] = NORMALIZE_FACTOR_16 * rCtx.inBuffer!!.getShort(j).toDouble()
+                            i++
+                            j += jCnt
+                        }
+                    }
+
+                    3 -> if (rCtx.srcByteOrder == ByteOrder.LITTLE_ENDIAN) {
+                        var i = 0
+                        while (i < len) {
+                            rCtx.inbuf[offset + i] = (NORMALIZE_FACTOR_24
+                                    * ((rCtx.inBuffer!!.getShort(j)
+                                .toInt() and 0xffff) or ((rCtx.inBuffer!![j + 2].toInt() shl 24) shr 8)).toDouble())
+                            i++
+                            j += jCnt
+                        }
                     } else {
-                        no_src(new BufferedInputStream(fpi), new BufferedOutputStream(fpt), rCtx.gain, length);
+                        var i = 0
+                        while (i < len) {
+                            rCtx.inbuf[offset + i] = (NORMALIZE_FACTOR_24
+                                    * (((rCtx.inBuffer!![j].toInt() shl 24) shr 8) or (rCtx.inBuffer!!.getShort(j + 1)
+                                .toInt() and 0xffff)).toDouble())
+                            i++
+                            j += jCnt
+                        }
+                    }
+
+                    4 -> {
+                        var i = 0
+                        while (i < len) {
+                            rCtx.inbuf[offset + i] = NORMALIZE_FACTOR_32 * rCtx.inBuffer!!.getInt(j).toDouble()
+                            i++
+                            j += jCnt
+                        }
                     }
                 }
-
-                fpt.close();
-            } catch (IOException e) {
-                throw new IOException("Error processing audio data", e);
-            }
-
-            showMessage(String.format("\npeak : %gdB", 20 * Math.log10(rCtx.peak)));
-
-            showMessage("\nPass 2");
-
-            double secondPassGain = calcSecondPassGain();
-
-            resetShaper();
-
-            long fptlen = tmpFile.length() / (8 * rCtx.nch);
-            int sumread = 0;
-            int ch;
-            DataInputStream inStrm = null;
-            BufferedOutputStream outStrm = null;
-            try {
-                inStrm = new DataInputStream(new BufferedInputStream(new FileInputStream(tmpFile)));
-                outStrm = new BufferedOutputStream(fpo);
-                byte[] ibuf = new byte[8 * rCtx.nch];
-                ByteBuffer bb = ByteBuffer.wrap(ibuf).order(ByteOrder.LITTLE_ENDIAN);
-                DoubleBuffer db = bb.asDoubleBuffer();
-                double f;
-
-                for (;;) {
-                    try {
-                        inStrm.readFully(ibuf);
-                    } catch (EOFException e) {
-                        break;
-                    }
-                    bb.clear();
-                    for (ch = 0; ch < rCtx.dnch; ch++) {
-                        f = db.get(ch % rCtx.nch) * secondPassGain;
-                        doubleToBytes(f, ch % rCtx.nch, bb);
-                    }
-                    outStrm.write(bb.array(), 0, bb.position());
-                    sumread++;
-
-                    if ((sumread & 0x3ffff) == 0) {
-                        listener.onChanged((double) sumread / fptlen);
-                    }
-                }
-                showProgress(1);
-            } catch (FileNotFoundException e1) {
-                throw new FileNotFoundException("Error opening temp file");
-            } catch (IOException e) {
-                throw new IOException("Error processing temp file", e);
-            } finally {
-                try {
-                    if (outStrm != null) {
-                        outStrm.flush();
-                    }
-                } catch (IOException ignored) {
-                }
-                try {
-                    if (inStrm != null) {
-                        inStrm.close();
-                    }
-                } catch (IOException ignored) {
-                }
-                try {
-                    //noinspection ResultOfMethodCallIgnored
-                    tmpFile.delete();
-                } catch (Exception e) {
-                    showMessage(String.format("Failed to delete temp file %s", rCtx.tmpFn));
-                }
-            }
-        } else {
-            BufferedOutputStream outStrm = new BufferedOutputStream(fpo);
-            try {
-                if (rCtx.sfrq < rCtx.dfrq) {
-                    upsample(fpi, outStrm, rCtx.gain, length);
-                } else if (rCtx.sfrq > rCtx.dfrq) {
-                    downsample(fpi, outStrm, rCtx.gain, length);
-                } else {
-                    no_src(new BufferedInputStream(fpi), outStrm, rCtx.gain, length);
-                }
-            } catch (IOException e) {
-                throw new IOException("Error processing audio data", e);
-            } finally {
-                outStrm.flush();
             }
         }
-        return rCtx.peak;
+
+        private fun fillOutBuf(rCtx: ResampleContext, dbps: Int, gain: Double, nsmplwrt: Int) {
+            var i: Int
+            var j: Int
+            var s: Int
+            val gain2: Double
+            var d: Double
+            var d2: Double
+            if (rCtx.twopass) {
+                i = 0
+                while (i < nsmplwrt * rCtx.nch) {
+                    d = rCtx.outbuf[i]
+                    rCtx.outBuffer!!.putDouble(d)
+                    d = abs(d)
+                    rCtx.peak = if (rCtx.peak < d) d else rCtx.peak
+                    i++
+                }
+            } else if (rCtx.dstFloat) {
+                if (rCtx.dither > 0) {
+                    gain2 = gain * (0x7fffff).toDouble()
+                    i = 0
+                    while (i < nsmplwrt) {
+                        j = 0
+                        while (j < rCtx.dnch) {
+                            s = do_shaping(rCtx, rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain2, (j % rCtx.nch))
+                            rCtx.outBuffer!!.putFloat(((1.0 / 0x7fffff) * s).toFloat())
+                            j++
+                        }
+                        i++
+                    }
+                } else {
+                    i = 0
+                    while (i < nsmplwrt) {
+                        j = 0
+                        while (j < rCtx.dnch) {
+                            d = rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain
+                            d2 = abs(d)
+                            if (d2 > 1.0) {
+                                d /= d2
+                                rCtx.peak = if (rCtx.peak < d2) d2 else rCtx.peak
+                            }
+                            rCtx.outBuffer!!.putFloat(d.toFloat())
+                            j++
+                        }
+                        i++
+                    }
+                }
+            } else {
+                when (dbps) {
+                    1 -> {
+                        gain2 = gain * (0x7f).toDouble()
+                        if (rCtx.dither > 0) {
+                            i = 0
+                            while (i < nsmplwrt) {
+                                j = 0
+                                while (j < rCtx.dnch) {
+                                    s = do_shaping(
+                                        rCtx,
+                                        rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain2,
+                                        (j % rCtx.nch)
+                                    )
+                                    rCtx.outBuffer!!.put((s + 0x80).toByte()) //	((unsigned char *)rawoutbuf)[i] = s + 0x80;
+                                    j++
+                                }
+                                i++
+                            }
+                        } else {
+                            i = 0
+                            while (i < nsmplwrt) {
+                                j = 0
+                                while (j < rCtx.dnch) {
+                                    s = RINT(rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain2)
+
+                                    if (s < -0x80) {
+                                        d = s.toDouble() / -0x80
+                                        rCtx.peak = if (rCtx.peak < d) d else rCtx.peak
+                                        s = -0x80
+                                    }
+                                    if (0x7f < s) {
+                                        d = s.toDouble() / 0x7f
+                                        rCtx.peak = if (rCtx.peak < d) d else rCtx.peak
+                                        s = 0x7f
+                                    }
+                                    rCtx.outBuffer!!.put((s + 0x80).toByte()) //	((unsigned char *)rawoutbuf)[i] = s + 0x80;
+                                    j++
+                                }
+                                i++
+                            }
+                        }
+                    }
+
+                    2 -> {
+                        gain2 = gain * (0x7fff).toDouble()
+                        if (rCtx.dither > 0) {
+                            i = 0
+                            while (i < nsmplwrt) {
+                                j = 0
+                                while (j < rCtx.dnch) {
+                                    s = do_shaping(
+                                        rCtx,
+                                        rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain2,
+                                        (j % rCtx.nch)
+                                    )
+                                    rCtx.outBuffer!!.putShort(s.toShort())
+                                    j++
+                                }
+                                i++
+                            }
+                        } else {
+                            i = 0
+                            while (i < nsmplwrt) {
+                                j = 0
+                                while (j < rCtx.dnch) {
+                                    s = RINT(rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain2)
+
+                                    if (s < -0x8000) {
+                                        d = s.toDouble() / -0x8000
+                                        rCtx.peak = if (rCtx.peak < d) d else rCtx.peak
+                                        s = -0x8000
+                                    }
+                                    if (0x7fff < s) {
+                                        d = s.toDouble() / 0x7fff
+                                        rCtx.peak = if (rCtx.peak < d) d else rCtx.peak
+                                        s = 0x7fff
+                                    }
+                                    rCtx.outBuffer!!.putShort(s.toShort())
+                                    j++
+                                }
+                                i++
+                            }
+                        }
+                    }
+
+                    3 -> {
+                        gain2 = gain * (0x7fffff).toDouble()
+                        if (rCtx.dither > 0) {
+                            i = 0
+                            while (i < nsmplwrt) {
+                                j = 0
+                                while (j < rCtx.dnch) {
+                                    s = do_shaping(
+                                        rCtx,
+                                        rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain2,
+                                        (j % rCtx.nch)
+                                    )
+                                    rCtx.outBuffer!!.putShort(s.toShort())
+                                    s = s shr 16
+                                    rCtx.outBuffer!!.put(s.toByte())
+                                    j++
+                                }
+                                i++
+                            }
+                        } else {
+                            i = 0
+                            while (i < nsmplwrt) {
+                                j = 0
+                                while (j < rCtx.dnch) {
+                                    s = RINT(rCtx.outbuf[i * rCtx.nch + (j % rCtx.nch)] * gain2)
+
+                                    if (s < -0x800000) {
+                                        d = s.toDouble() / -0x800000
+                                        rCtx.peak = if (rCtx.peak < d) d else rCtx.peak
+                                        s = -0x800000
+                                    }
+                                    if (0x7fffff < s) {
+                                        d = s.toDouble() / 0x7fffff
+                                        rCtx.peak = if (rCtx.peak < d) d else rCtx.peak
+                                        s = 0x7fffff
+                                    }
+                                    rCtx.outBuffer!!.putShort(s.toShort())
+                                    s = s shr 16
+                                    rCtx.outBuffer!!.put(s.toByte())
+                                    j++
+                                }
+                                i++
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private fun writeOutBytes(rCtx: ResampleContext, nsmplwrt: Int, dbps: Int, offset: Int, isLast: Boolean): Int {
+            var writeLen = 0
+            var writeOffset = 0
+            val nch = if (rCtx.twopass) rCtx.nch else rCtx.dnch
+
+            if (!rCtx.init) {
+                if (isLast) {
+                    if (rCtx.sumread.toDouble() * rCtx.dfrq / rCtx.sfrq + 2 > rCtx.sumwrite + nsmplwrt) {
+                        writeLen = dbps * nch * nsmplwrt
+                    } else {
+                        writeLen =
+                            dbps * nch * (floor(rCtx.sumread.toDouble() * rCtx.dfrq / rCtx.sfrq) + 2 - rCtx.sumwrite).toInt()
+                        reset(rCtx)
+                    }
+                } else {
+                    writeLen = dbps * nch * nsmplwrt
+                }
+            } else {
+                if (nsmplwrt < rCtx.delay) {
+                    rCtx.delay -= nsmplwrt
+                } else {
+                    writeOffset = dbps * nch * rCtx.delay
+                    if (isLast) {
+                        if (rCtx.sumread.toDouble() * rCtx.dfrq / rCtx.sfrq + 2 > rCtx.sumwrite + nsmplwrt - rCtx.delay) {
+                            writeLen = dbps * nch * (nsmplwrt - rCtx.delay)
+                        } else {
+                            writeLen =
+                                (dbps * nch * (floor(rCtx.sumread.toDouble() * rCtx.dfrq / rCtx.sfrq) + 2 - rCtx.sumwrite - rCtx.delay)).toInt()
+                            reset(rCtx)
+                        }
+                    } else {
+                        writeLen = dbps * nch * (nsmplwrt - rCtx.delay)
+                        rCtx.init = false
+                    }
+                }
+            }
+
+            if (writeLen > 0) {
+                if (rCtx.outBytes == null) {
+                    rCtx.outBytes = ByteArray(rCtx.outBuffer!!.limit())
+                }
+                if (rCtx.outBytes!!.size - offset < rCtx.outBuffer!!.limit()) {
+                    val tmpBytes = ByteArray(offset + rCtx.outBuffer!!.limit())
+                    System.arraycopy(rCtx.outBytes!!, 0, tmpBytes, 0, offset)
+                    rCtx.outBytes = tmpBytes
+                }
+                rCtx.outBuffer!!.position(writeOffset)
+                rCtx.outBuffer!![rCtx.outBytes, offset, writeLen]
+            }
+
+            return writeLen
+        }
+
+        @Throws(IOException::class)
+        private fun writeOutStream(
+            rCtx: ResampleContext,
+            fpo: OutputStream,
+            nsmplwrt: Int,
+            dbps: Int,
+            isLast: Boolean
+        ): Boolean {
+            val nch = if (rCtx.twopass) rCtx.nch else rCtx.dnch
+
+            if (!rCtx.init) {
+                if (isLast) {
+                    if (rCtx.sumread.toDouble() * rCtx.dfrq / rCtx.sfrq + 2 > rCtx.sumwrite + nsmplwrt) {
+                        fpo.write(rCtx.rawoutbuf, 0, dbps * nch * nsmplwrt)
+                        rCtx.sumwrite += nsmplwrt.toLong()
+                    } else {
+                        val limitData =
+                            (dbps * nch * (floor(rCtx.sumread.toDouble() * rCtx.dfrq / rCtx.sfrq) + 2 - rCtx.sumwrite)).toInt()
+                        if (limitData > 0) {
+                            fpo.write(rCtx.rawoutbuf, 0, limitData)
+                        }
+                        reset(rCtx)
+                        return true
+                    }
+                } else {
+                    fpo.write(rCtx.rawoutbuf, 0, dbps * nch * nsmplwrt)
+                    rCtx.sumwrite += nsmplwrt.toLong()
+                }
+            } else {
+                if (nsmplwrt < rCtx.delay) {
+                    rCtx.delay -= nsmplwrt
+                } else {
+                    if (isLast) {
+                        if (rCtx.sumread.toDouble() * rCtx.dfrq / rCtx.sfrq + 2 > rCtx.sumwrite + nsmplwrt - rCtx.delay) {
+                            fpo.write(rCtx.rawoutbuf, dbps * nch * rCtx.delay, dbps * nch * (nsmplwrt - rCtx.delay))
+                            rCtx.sumwrite += (nsmplwrt - rCtx.delay).toLong()
+                        } else {
+                            fpo.write(
+                                rCtx.rawoutbuf,
+                                dbps * nch * rCtx.delay,
+                                (dbps * nch * (floor(rCtx.sumread.toDouble() * rCtx.dfrq / rCtx.sfrq) + 2 - rCtx.sumwrite - rCtx.delay)).toInt()
+                            )
+                            reset(rCtx)
+                            return true
+                        }
+                    } else {
+                        fpo.write(rCtx.rawoutbuf, dbps * nch * rCtx.delay, dbps * nch * (nsmplwrt - rCtx.delay))
+                        rCtx.sumwrite += (nsmplwrt - rCtx.delay).toLong()
+                        rCtx.init = false
+                    }
+                }
+            }
+            return false
+        }
+
+        private fun upSample(rCtx: ResampleContext, nsmplwrt1: Int): Int {
+            var p: Int
+            var i: Int
+            var j: Int
+            var s1o: Int
+            var no: Int
+            var ip2: Int
+            var nsmplwrt2 = 0
+            val s1p_backup = rCtx.sp
+            val ip_backup = rCtx.ip
+            val osc_backup = rCtx.osc
+            var re: Double
+            var im: Double
+            var d: Double
+            var tmp: Double
+
+            // apply stage 1 filter
+            var ch = 0
+            while (ch < rCtx.nch) {
+                no = rCtx.ny * rCtx.osf
+
+                rCtx.sp = s1p_backup
+                rCtx.ip = ip_backup + ch
+
+                when (rCtx.nx) {
+                    7 -> {
+                        p = 0
+                        while (p < nsmplwrt1) {
+                            s1o = rCtx.fOrder[rCtx.sp]
+
+                            rCtx.buf2[ch][p] = (rCtx.stageB[s1o][0] * rCtx.inbuf[rCtx.ip] + rCtx.stageB[s1o][1] * rCtx.inbuf[rCtx.ip + rCtx.nch] + rCtx.stageB[s1o][2] * rCtx.inbuf[rCtx.ip + 2 * rCtx.nch] + rCtx.stageB[s1o][3] * rCtx.inbuf[rCtx.ip + 3 * rCtx.nch] + rCtx.stageB[s1o][4] * rCtx.inbuf[rCtx.ip + 4 * rCtx.nch] + rCtx.stageB[s1o][5] * rCtx.inbuf[rCtx.ip + 5 * rCtx.nch] + rCtx.stageB[s1o][6] * rCtx.inbuf[rCtx.ip + 6 * rCtx.nch])
+
+                            rCtx.ip += rCtx.fInc[rCtx.sp]
+
+                            rCtx.sp++
+                            if (rCtx.sp == no) {
+                                rCtx.sp = 0
+                            }
+                            p++
+                        }
+                    }
+
+                    9 -> {
+                        p = 0
+                        while (p < nsmplwrt1) {
+                            s1o = rCtx.fOrder[rCtx.sp]
+
+                            rCtx.buf2[ch][p] = (rCtx.stageB[s1o][0] * rCtx.inbuf[rCtx.ip] + rCtx.stageB[s1o][1] * rCtx.inbuf[rCtx.ip + rCtx.nch] + rCtx.stageB[s1o][2] * rCtx.inbuf[rCtx.ip + 2 * rCtx.nch] + rCtx.stageB[s1o][3] * rCtx.inbuf[rCtx.ip + 3 * rCtx.nch] + rCtx.stageB[s1o][4] * rCtx.inbuf[rCtx.ip + 4 * rCtx.nch] + rCtx.stageB[s1o][5] * rCtx.inbuf[rCtx.ip + 5 * rCtx.nch] + rCtx.stageB[s1o][6] * rCtx.inbuf[rCtx.ip + 6 * rCtx.nch] + rCtx.stageB[s1o][7] * rCtx.inbuf[rCtx.ip + 7 * rCtx.nch] + rCtx.stageB[s1o][8] * rCtx.inbuf[rCtx.ip + 8 * rCtx.nch])
+
+                            rCtx.ip += rCtx.fInc[rCtx.sp]
+
+                            rCtx.sp++
+                            if (rCtx.sp == no) {
+                                rCtx.sp = 0
+                            }
+                            p++
+                        }
+                    }
+
+                    else -> {
+                        p = 0
+                        while (p < nsmplwrt1) {
+                            tmp = 0.0
+                            ip2 = rCtx.ip
+
+                            s1o = rCtx.fOrder[rCtx.sp]
+
+                            i = 0
+                            while (i < rCtx.nx) {
+                                tmp += rCtx.stageB[s1o][i] * rCtx.inbuf[ip2]
+                                ip2 += rCtx.nch
+                                i++
+                            }
+                            rCtx.buf2[ch][p] = tmp
+
+                            rCtx.ip += rCtx.fInc[rCtx.sp]
+
+                            rCtx.sp++
+                            if (rCtx.sp == no) {
+                                rCtx.sp = 0
+                            }
+                            p++
+                        }
+                    }
+                }
+
+                rCtx.osc = osc_backup
+
+                // apply stage 2 filter
+                Arrays.fill(rCtx.buf2[ch], nsmplwrt1, rCtx.nb, 0.0)
+
+                rCtx.fft!!.realDFT(rCtx.buf2[ch])
+
+                rCtx.buf2[ch][0] = rCtx.stageA[0] * rCtx.buf2[ch][0]
+                rCtx.buf2[ch][1] = rCtx.stageA[1] * rCtx.buf2[ch][1]
+
+                i = 1
+                while (i < rCtx.nb / 2) {
+                    re = rCtx.stageA[i * 2] * rCtx.buf2[ch][i * 2] - rCtx.stageA[i * 2 + 1] * rCtx.buf2[ch][i * 2 + 1]
+                    im = rCtx.stageA[i * 2 + 1] * rCtx.buf2[ch][i * 2] + rCtx.stageA[i * 2] * rCtx.buf2[ch][i * 2 + 1]
+
+                    //System.out.println(String.format("%d : %g %g %g %g %g %g\n",i,rCtx.stageA[i*2],rCtx.stageA[i*2+1],rCtx.buf2[ch][i*2],rCtx.buf2[ch][i*2+1],re,im));
+                    rCtx.buf2[ch][i * 2] = re
+                    rCtx.buf2[ch][i * 2 + 1] = im
+                    i++
+                }
+
+                rCtx.fft!!.realInverseDFT(rCtx.buf2[ch])
+
+                i = rCtx.osc
+                j = 0
+                while (i < rCtx.nb2) {
+                    d = (rCtx.buf1[ch][j] + rCtx.buf2[ch][i])
+                    rCtx.outbuf[ch + j * rCtx.nch] = d
+                    i += rCtx.osf
+                    j++
+                }
+
+                nsmplwrt2 = j
+
+                rCtx.osc = i - rCtx.nb2
+
+                j = 0
+                while (i < rCtx.nb) {
+                    rCtx.buf1[ch][j] = rCtx.buf2[ch][i]
+                    i += rCtx.osf
+                    j++
+                }
+                ch++
+            }
+
+            return nsmplwrt2
+        }
+
+        private fun downSample(rCtx: ResampleContext): Int {
+            val rps_backup = rCtx.rps
+            val s2p_backup = rCtx.sp
+            var i: Int
+            var j: Int
+            var k: Int
+            var t1: Int
+            var bp: Int
+            var nsmplwrt2 = 0
+            var re: Double
+            var im: Double
+            var tmp: Double
+            var bp2: Int
+            var s2o: Int
+
+            var ch = 0
+            while (ch < rCtx.nch) {
+                rCtx.rps = rps_backup
+
+                Arrays.fill(rCtx.buf1[ch], 0, rCtx.rps, 0.0)
+
+                i = rCtx.rps
+                j = 0
+                while (i < rCtx.nb2) {
+                    //				assert(j < ((rCtx.nb2-rCtx.rps-1)/rCtx.osf+1));
+                    rCtx.buf1[ch][i] = rCtx.inbuf[j * rCtx.nch + ch]
+                    k = i + 1
+                    while (k < i + rCtx.osf) {
+                        rCtx.buf1[ch][k] = 0.0
+                        k++
+                    }
+                    i += rCtx.osf
+                    j++
+                }
+
+                //			assert(j == ((rCtx.nb2-rCtx.rps-1)/rCtx.osf+1));
+                Arrays.fill(rCtx.buf1[ch], rCtx.nb2, rCtx.nb, 0.0)
+
+                rCtx.rps = i - rCtx.nb2
+                rCtx.fft!!.realDFT(rCtx.buf1[ch])
+                rCtx.buf1[ch][0] = rCtx.stageA[0] * rCtx.buf1[ch][0]
+                rCtx.buf1[ch][1] = rCtx.stageA[1] * rCtx.buf1[ch][1]
+                i = 1
+                while (i < rCtx.nb2) {
+                    re = rCtx.stageA[i * 2] * rCtx.buf1[ch][i * 2] - rCtx.stageA[i * 2 + 1] * rCtx.buf1[ch][i * 2 + 1]
+                    im = rCtx.stageA[i * 2 + 1] * rCtx.buf1[ch][i * 2] + rCtx.stageA[i * 2] * rCtx.buf1[ch][i * 2 + 1]
+
+                    rCtx.buf1[ch][i * 2] = re
+                    rCtx.buf1[ch][i * 2 + 1] = im
+                    i++
+                }
+
+                rCtx.fft!!.realInverseDFT(rCtx.buf1[ch])
+                i = 0
+                while (i < rCtx.nb2) {
+                    rCtx.buf2[ch][rCtx.nx + 1 + i] += rCtx.buf1[ch][i]
+                    i++
+                }
+
+                t1 = rCtx.rp / (rCtx.fs2 / rCtx.fs1)
+                if (rCtx.rp % (rCtx.fs2 / rCtx.fs1) != 0) {
+                    t1++
+                }
+
+                bp = t1 // bp = &(buf2[ch][t1]);
+                rCtx.sp = s2p_backup
+
+                j = 0
+                while (bp < rCtx.nb2 + 1) {
+                    tmp = 0.0
+                    bp2 = bp
+                    s2o = rCtx.fOrder[rCtx.sp]
+                    bp += rCtx.fInc[rCtx.sp]
+                    rCtx.sp++
+
+                    if (rCtx.sp == rCtx.ny) {
+                        rCtx.sp = 0
+                    }
+
+                    //				assert(bp2*(rCtx.fs2/rCtx.fs1)-(rCtx.rp+j*(rCtx.fs2/rCtx.dfrq)) == s2o);
+                    i = 0
+                    while (i < rCtx.nx) {
+                        tmp += rCtx.stageB[s2o][i] * rCtx.buf2[ch][bp2++]
+                        i++
+                    }
+
+                    rCtx.outbuf[j * rCtx.nch + ch] = tmp
+                    j++
+                }
+
+                nsmplwrt2 = j
+                ch++
+            }
+            return nsmplwrt2
+        }
+
+        /*
+     * float[][] input
+     * Duplicated the int[][] version instead of generalizing it to minimize branching within the loop.
+     */
+        private fun upsample(
+            rCtx: ResampleContext,
+            samples: Array<FloatArray>,
+            length: Int,
+            gain: Double,
+            isLast: Boolean
+        ): Int {
+            var nsmplwrt1 = rCtx.nb2
+            var nsmplwrt2: Int
+            var writeLen: Int
+            val dbps = if (rCtx.twopass) 8 else if (rCtx.dstFloat) 4 else rCtx.dbps
+            val tobereadbase = floor(rCtx.nb2.toDouble() * rCtx.sfrq / (rCtx.dfrq * rCtx.osf)).toInt() + 1 + rCtx.nx
+            var toberead = tobereadbase - rCtx.inbuflen
+
+            if (length < toberead && !isLast) {
+                rCtx.inbuflen += fillInBuf(rCtx, samples, 0, length)
+                rCtx.sumread += length.toLong()
+                return 0
+            }
+
+            if (length == 0 && rCtx.inbuflen > 0 && isLast) {
+                Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch, 0.0)
+                nsmplwrt1 = rCtx.nb2
+                rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch
+                nsmplwrt2 = upSample(rCtx, nsmplwrt1)
+                rCtx.rp += nsmplwrt1 * rCtx.sfrqfrqgcd / rCtx.osf
+                rCtx.outBuffer!!.clear()
+                fillOutBuf(rCtx, dbps, gain, nsmplwrt2)
+                rCtx.outBuffer!!.flip()
+                return writeOutBytes(rCtx, nsmplwrt2, dbps, 0, true)
+            }
+
+            var outBytesWritten = 0
+            var lenUsed = 0
+            while (lenUsed < length) {
+                toberead = tobereadbase - rCtx.inbuflen
+
+
+                if (length - lenUsed < toberead) {
+                    if (!isLast) {
+                        rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, length - lenUsed)
+                        rCtx.sumread += (length - lenUsed).toLong()
+                        return outBytesWritten
+                    }
+                    Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch, 0.0)
+                    toberead = length - lenUsed
+                }
+                rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, toberead)
+                lenUsed += toberead
+                rCtx.sumread += toberead.toLong()
+
+
+                rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch
+
+                nsmplwrt2 = upSample(rCtx, nsmplwrt1)
+
+                rCtx.rp += nsmplwrt1 * rCtx.sfrqfrqgcd / rCtx.osf
+
+                rCtx.outBuffer!!.clear()
+                fillOutBuf(rCtx, dbps, gain, nsmplwrt2)
+                rCtx.outBuffer!!.flip()
+
+                writeLen = writeOutBytes(rCtx, nsmplwrt2, dbps, outBytesWritten, isLast)
+                if (writeLen < 0) {
+                    break
+                }
+                outBytesWritten += writeLen
+
+                rCtx.sumwrite += (writeLen / rCtx.wbpf).toLong()
+
+                rCtx.ds = (rCtx.rp - 1) / rCtx.fs1sfrq
+
+                if (rCtx.inbuflen > rCtx.ds) System.arraycopy(
+                    rCtx.inbuf,
+                    rCtx.nch * rCtx.ds,
+                    rCtx.inbuf,
+                    0,
+                    rCtx.nch * (rCtx.inbuflen - rCtx.ds)
+                )
+
+                rCtx.inbuflen -= rCtx.ds
+                rCtx.rp -= rCtx.ds * rCtx.fs1sfrq
+            }
+            return outBytesWritten
+        }
+
+        private fun downsample(
+            rCtx: ResampleContext,
+            samples: Array<FloatArray>,
+            length: Int,
+            gain: Double,
+            isLast: Boolean
+        ): Int {
+            var nsmplwrt: Int
+            var writeLen: Int
+            val dbps = if (rCtx.twopass) 8 else if (rCtx.dstFloat) 4 else rCtx.dbps
+            var toberead = ((rCtx.nb2 - rCtx.rps - 1) / rCtx.osf + 1)
+
+            if (rCtx.inbuflen + length < toberead && !isLast) {
+                rCtx.inbuflen += fillInBuf(rCtx, samples, 0, length)
+                rCtx.sumread += length.toLong()
+                return 0
+            }
+
+            if (length == 0 && rCtx.inbuflen > 0 && isLast) {
+                Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, toberead * rCtx.nch, 0.0)
+                nsmplwrt = downSample(rCtx)
+                rCtx.inbuflen = 0
+                rCtx.rp += nsmplwrt * (rCtx.fs2 / rCtx.dfrq)
+                rCtx.outBuffer!!.clear()
+                fillOutBuf(rCtx, dbps, gain, nsmplwrt)
+                rCtx.outBuffer!!.flip()
+                return writeOutBytes(rCtx, nsmplwrt, dbps, 0, true)
+            }
+
+            var outBytesWritten = 0
+            var lenUsed = 0
+
+            while (lenUsed < length) {
+                toberead = ((rCtx.nb2 - rCtx.rps - 1) / rCtx.osf + 1) - rCtx.inbuflen
+
+                if (length - lenUsed < toberead) {
+                    if (!isLast) {
+                        rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, length - lenUsed)
+                        rCtx.sumread += (length - lenUsed).toLong()
+                        return outBytesWritten
+                    }
+                    Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, (toberead + rCtx.inbuflen) * rCtx.nch, 0.0)
+                    toberead = length - lenUsed
+                }
+                rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, toberead)
+                lenUsed += toberead
+
+                rCtx.sumread += toberead.toLong()
+
+                nsmplwrt = downSample(rCtx)
+                rCtx.inbuflen = 0
+                rCtx.rp += nsmplwrt * rCtx.fs2dfrq
+
+                rCtx.outBuffer!!.clear()
+                fillOutBuf(rCtx, dbps, gain, nsmplwrt)
+                rCtx.outBuffer!!.flip()
+
+                writeLen = writeOutBytes(rCtx, nsmplwrt, dbps, outBytesWritten, isLast)
+                if (writeLen < 0) {
+                    break
+                }
+                outBytesWritten += writeLen
+
+                rCtx.sumwrite += (writeLen / rCtx.wbpf).toLong()
+
+                rCtx.ds = (rCtx.rp - 1) / rCtx.fs2fs1
+
+                if (rCtx.ds > rCtx.nb2) {
+                    rCtx.ds = rCtx.nb2
+                }
+                var ch = 0
+                while (ch < rCtx.nch) {
+                    System.arraycopy(rCtx.buf2[ch], rCtx.ds, rCtx.buf2[ch], 0, rCtx.nx + 1 + rCtx.nb2 - rCtx.ds)
+                    ch++
+                }
+
+                rCtx.rp -= rCtx.ds * rCtx.fs2fs1
+
+                ch = 0
+                while (ch < rCtx.nch) {
+                    System.arraycopy(rCtx.buf1[ch], rCtx.nb2, rCtx.buf2[ch], rCtx.nx + 1, rCtx.nb2)
+                    ch++
+                }
+            }
+            return outBytesWritten
+        }
+
+        private fun no_src(rCtx: ResampleContext, samples: Array<FloatArray>, length: Int, gain: Double): Int {
+            var i: Int
+            var ch: Int
+            var f: Double
+            var p: Double
+            var len: Int
+
+            var outBytesWritten = 0
+            var lenUsed = 0
+
+            var j = 0
+            if (rCtx.nch == 1 && rCtx.rnch != rCtx.nch) {
+                j = rCtx.mono
+            }
+
+            while (lenUsed < length) {
+                len = length - lenUsed
+                rCtx.outBuffer!!.clear()
+                if (len > rCtx.outBuffer!!.limit() / rCtx.nch) {
+                    len = rCtx.outBuffer!!.limit() / rCtx.nch
+                }
+                lenUsed += len
+
+                if (rCtx.twopass) {
+                    i = 0
+                    while (i < len) {
+                        ch = 0
+                        while (ch < rCtx.nch) {
+                            f = samples[ch % rCtx.nch + j][i] * gain
+                            p = if (f > 0) f else -f
+                            rCtx.peak = if (rCtx.peak < p) p else rCtx.peak
+                            rCtx.outBuffer!!.putDouble(f)
+                            ch++
+                        }
+                        i++
+                    }
+                } else {
+                    i = 0
+                    while (i < len) {
+                        ch = 0
+                        while (ch < rCtx.dnch) {
+                            f = samples[ch % rCtx.nch + j][i] * gain
+                            writeToOutBuffer(rCtx, f, (ch % rCtx.nch))
+                            ch++
+                        }
+                        i++
+                    }
+                }
+                rCtx.outBuffer!!.flip()
+                if (rCtx.outBytes!!.size - outBytesWritten < rCtx.outBuffer!!.limit()) {
+                    val tmpBytes = ByteArray(outBytesWritten + rCtx.outBuffer!!.limit())
+                    System.arraycopy(rCtx.outBytes!!, 0, tmpBytes, 0, outBytesWritten)
+                    rCtx.outBytes = tmpBytes
+                }
+                rCtx.outBuffer!![rCtx.outBytes, outBytesWritten, rCtx.outBuffer!!.limit()]
+                outBytesWritten += rCtx.outBuffer!!.limit()
+            }
+            return outBytesWritten
+        }
+
+        /* end float[][] input */ /* int[][] input */
+        private fun upsample(
+            rCtx: ResampleContext,
+            samples: Array<IntArray>,
+            length: Int,
+            gain: Double,
+            isLast: Boolean
+        ): Int {
+            var nsmplwrt1: Int
+            var nsmplwrt2: Int
+            var writeLen: Int
+            val dbps = if (rCtx.twopass) 8 else if (rCtx.dstFloat) 4 else rCtx.dbps
+            val tobereadbase = floor(rCtx.nb2.toDouble() * rCtx.sfrq / (rCtx.dfrq * rCtx.osf)).toInt() + 1 + rCtx.nx
+            var toberead = tobereadbase - rCtx.inbuflen
+
+            if (length < toberead && !isLast) {
+                rCtx.inbuflen += fillInBuf(rCtx, samples, 0, length)
+                rCtx.sumread += length.toLong()
+                return 0
+            }
+
+            if (length == 0 && rCtx.inbuflen > 0 && isLast) {
+                Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch, 0.0)
+                nsmplwrt1 = rCtx.nb2
+                rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch
+                nsmplwrt2 = upSample(rCtx, nsmplwrt1)
+                rCtx.rp += nsmplwrt1 * rCtx.sfrqfrqgcd / rCtx.osf
+                rCtx.outBuffer!!.clear()
+                fillOutBuf(rCtx, dbps, gain, nsmplwrt2)
+                rCtx.outBuffer!!.flip()
+                return writeOutBytes(rCtx, nsmplwrt2, dbps, 0, true)
+            }
+
+            var outBytesWritten = 0
+            var lenUsed = 0
+
+            while (lenUsed < length) {
+                toberead = tobereadbase - rCtx.inbuflen
+
+                if (length - lenUsed < toberead) {
+                    if (!isLast) {
+                        rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, length - lenUsed)
+                        rCtx.sumread += (length - lenUsed).toLong()
+                        return outBytesWritten
+                    }
+                    Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, tobereadbase * rCtx.nch, 0.0)
+                    toberead = length - lenUsed
+                }
+                rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, toberead)
+                lenUsed += toberead
+                rCtx.sumread += toberead.toLong()
+
+                nsmplwrt1 = rCtx.nb2
+
+                rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch
+
+                nsmplwrt2 = upSample(rCtx, nsmplwrt1)
+
+                rCtx.rp += nsmplwrt1 * rCtx.sfrqfrqgcd / rCtx.osf
+
+                rCtx.outBuffer!!.clear()
+                fillOutBuf(rCtx, dbps, gain, nsmplwrt2)
+                rCtx.outBuffer!!.flip()
+
+                writeLen = writeOutBytes(rCtx, nsmplwrt2, dbps, outBytesWritten, isLast)
+                if (writeLen < 0) {
+                    break
+                }
+                outBytesWritten += writeLen
+
+                rCtx.sumwrite += (writeLen / rCtx.wbpf).toLong()
+
+                rCtx.ds = (rCtx.rp - 1) / rCtx.fs1sfrq
+
+                if (rCtx.inbuflen > rCtx.ds) System.arraycopy(
+                    rCtx.inbuf,
+                    rCtx.nch * rCtx.ds,
+                    rCtx.inbuf,
+                    0,
+                    rCtx.nch * (rCtx.inbuflen - rCtx.ds)
+                )
+
+                rCtx.inbuflen -= rCtx.ds
+                rCtx.rp -= rCtx.ds * rCtx.fs1sfrq
+            }
+            return outBytesWritten
+        }
+
+        private fun downsample(
+            rCtx: ResampleContext,
+            samples: Array<IntArray>,
+            length: Int,
+            gain: Double,
+            isLast: Boolean
+        ): Int {
+            var nsmplwrt: Int
+            var writeLen: Int
+            val dbps = if (rCtx.twopass) 8 else if (rCtx.dstFloat) 4 else rCtx.dbps
+            var toberead = ((rCtx.nb2 - rCtx.rps - 1) / rCtx.osf + 1)
+
+            if (rCtx.inbuflen + length < toberead && !isLast) {
+                rCtx.inbuflen += fillInBuf(rCtx, samples, 0, length)
+                rCtx.sumread += length.toLong()
+                return 0
+            }
+
+            if (length == 0 && rCtx.inbuflen > 0 && isLast) {
+                Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, toberead * rCtx.nch, 0.0)
+                nsmplwrt = downSample(rCtx)
+                rCtx.inbuflen = 0
+                rCtx.rp += nsmplwrt * (rCtx.fs2 / rCtx.dfrq)
+                rCtx.outBuffer!!.clear()
+                fillOutBuf(rCtx, dbps, gain, nsmplwrt)
+                rCtx.outBuffer!!.flip()
+                return writeOutBytes(rCtx, nsmplwrt, dbps, 0, true)
+            }
+
+            var outBytesWritten = 0
+            var lenUsed = 0
+
+            while (lenUsed < length) {
+                toberead = ((rCtx.nb2 - rCtx.rps - 1) / rCtx.osf + 1) - rCtx.inbuflen
+
+                if (length - lenUsed < toberead) {
+                    if (!isLast) {
+                        rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, length - lenUsed)
+                        rCtx.sumread += (length - lenUsed).toLong()
+                        return outBytesWritten
+                    }
+                    Arrays.fill(rCtx.inbuf, rCtx.inbuflen * rCtx.nch, (toberead + rCtx.inbuflen) * rCtx.nch, 0.0)
+                    toberead = length - lenUsed
+                }
+                rCtx.inbuflen += fillInBuf(rCtx, samples, lenUsed, toberead)
+                lenUsed += toberead
+
+                rCtx.sumread += toberead.toLong()
+
+                nsmplwrt = downSample(rCtx)
+                rCtx.inbuflen = 0
+                rCtx.rp += nsmplwrt * rCtx.fs2dfrq
+
+                rCtx.outBuffer!!.clear()
+                fillOutBuf(rCtx, dbps, gain, nsmplwrt)
+                rCtx.outBuffer!!.flip()
+
+                writeLen = writeOutBytes(rCtx, nsmplwrt, dbps, outBytesWritten, isLast)
+                if (writeLen < 0) {
+                    break
+                }
+                outBytesWritten += writeLen
+
+                rCtx.sumwrite += (writeLen / rCtx.wbpf).toLong()
+
+                rCtx.ds = (rCtx.rp - 1) / rCtx.fs2fs1
+
+                if (rCtx.ds > rCtx.nb2) {
+                    rCtx.ds = rCtx.nb2
+                }
+                var ch = 0
+                while (ch < rCtx.nch) {
+                    System.arraycopy(rCtx.buf2[ch], rCtx.ds, rCtx.buf2[ch], 0, rCtx.nx + 1 + rCtx.nb2 - rCtx.ds)
+                    ch++
+                }
+
+                rCtx.rp -= rCtx.ds * rCtx.fs2fs1
+
+                ch = 0
+                while (ch < rCtx.nch) {
+                    System.arraycopy(rCtx.buf1[ch], rCtx.nb2, rCtx.buf2[ch], rCtx.nx + 1, rCtx.nb2)
+                    ch++
+                }
+            }
+            return outBytesWritten
+        }
+
+        private fun no_src(rCtx: ResampleContext, samples: Array<IntArray>, length: Int, gain: Double): Int {
+            var i: Int
+            var ch: Int
+            var f: Double
+            var p: Double
+            var len: Int
+
+            var outBytesWritten = 0
+            var lenUsed = 0
+
+            var j = 0
+            if (rCtx.nch == 1 && rCtx.rnch != rCtx.nch) {
+                j = rCtx.mono
+            }
+
+            while (lenUsed < length) {
+                len = length - lenUsed
+                rCtx.outBuffer!!.clear()
+                if (len > rCtx.outBuffer!!.limit() / rCtx.nch) {
+                    len = rCtx.outBuffer!!.limit() / rCtx.nch
+                }
+                lenUsed += len
+
+                if (rCtx.twopass) {
+                    i = 0
+                    while (i < len) {
+                        ch = 0
+                        while (ch < rCtx.nch) {
+                            f = intSampleToDouble(rCtx, samples[ch % rCtx.nch + j][i]) * gain
+                            p = if (f > 0) f else -f
+                            rCtx.peak = if (rCtx.peak < p) p else rCtx.peak
+                            rCtx.outBuffer!!.putDouble(f)
+                            ch++
+                        }
+                        i++
+                    }
+                } else if (rCtx.dbps == rCtx.bps && !rCtx.dstFloat) {
+                    i = 0
+                    while (i < len) {
+                        ch = 0
+                        while (ch < rCtx.dnch) {
+                            writeIntToBuffer(rCtx, samples[ch % rCtx.nch + j][i], gain)
+                            ch++
+                        }
+                        i++
+                    }
+                } else {
+                    i = 0
+                    while (i < len) {
+                        ch = 0
+                        while (ch < rCtx.dnch) {
+                            f = intSampleToDouble(rCtx, samples[ch % rCtx.nch + j][i]) * gain
+                            writeToOutBuffer(rCtx, f, (ch % rCtx.nch))
+                            ch++
+                        }
+                        i++
+                    }
+                }
+                rCtx.outBuffer!!.flip()
+                if (rCtx.outBytes!!.size - outBytesWritten < rCtx.outBuffer!!.limit()) {
+                    val tmpBytes = ByteArray(outBytesWritten + rCtx.outBuffer!!.limit())
+                    System.arraycopy(rCtx.outBytes!!, 0, tmpBytes, 0, outBytesWritten)
+                    rCtx.outBytes = tmpBytes
+                }
+                rCtx.outBuffer!![rCtx.outBytes, outBytesWritten, rCtx.outBuffer!!.limit()]
+                outBytesWritten += rCtx.outBuffer!!.limit()
+            }
+            return outBytesWritten
+        }
+
+        /* end int[][] input */ /* byte[] input */
+        private fun upsample(
+            rCtx: ResampleContext,
+            samples: ByteArray,
+            offset: Int,
+            length: Int,
+            gain: Double,
+            isLast: Boolean
+        ): Int {
+            var nsmplread: Int
+            var nsmplwrt1: Int
+            var nsmplwrt2: Int
+            var writeLen: Int
+            val dbps = if (rCtx.twopass) 8 else if (rCtx.dstFloat) 4 else rCtx.dbps
+            val tobereadbase = floor(rCtx.nb2.toDouble() * rCtx.sfrq / (rCtx.dfrq * rCtx.osf)).toInt() + 1 + rCtx.nx
+            var toberead = tobereadbase - rCtx.inbuflen
+
+            if (rCtx.inBuffer!!.position() + length < toberead * rCtx.bpf && !isLast) {
+                rCtx.inBuffer!!.put(samples, offset, length)
+                return 0
+            }
+
+            if (length == 0 && rCtx.inBuffer!!.hasRemaining() && isLast) {
+                nsmplread = rCtx.inBuffer!!.position() / rCtx.bpf
+                rCtx.inBuffer!!.flip()
+                fillInBuf(rCtx, nsmplread)
+                Arrays.fill(
+                    rCtx.inbuf,
+                    rCtx.nch * (rCtx.inbuflen + nsmplread),
+                    rCtx.nch * (rCtx.inbuflen + toberead),
+                    0.0
+                )
+                rCtx.inBuffer!!.clear()
+                rCtx.inbuflen += toberead
+                rCtx.sumread += nsmplread.toLong()
+                nsmplwrt1 = rCtx.nb2
+                rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch
+                nsmplwrt2 = upSample(rCtx, nsmplwrt1)
+                rCtx.rp += nsmplwrt1 * rCtx.sfrqfrqgcd / rCtx.osf
+                rCtx.outBuffer!!.clear()
+                fillOutBuf(rCtx, dbps, gain, nsmplwrt2)
+                rCtx.outBuffer!!.flip()
+                return writeOutBytes(rCtx, nsmplwrt2, dbps, 0, true)
+            }
+
+            var outBytesWritten = 0
+            var lenUsed = 0
+
+            while (lenUsed < length) {
+                toberead = tobereadbase - rCtx.inbuflen
+                nsmplread = toberead * rCtx.bpf - rCtx.inBuffer!!.position()
+                if (nsmplread > length - lenUsed) {
+                    nsmplread = length - lenUsed
+                }
+
+                rCtx.inBuffer!!.put(samples, offset + lenUsed, nsmplread)
+                lenUsed += nsmplread
+
+                if (rCtx.inBuffer!!.position() < toberead * rCtx.bpf) {
+                    if (!isLast) return outBytesWritten
+                    nsmplread = rCtx.inBuffer!!.position() / rCtx.bpf
+                    Arrays.fill(
+                        rCtx.inbuf,
+                        rCtx.nch * (rCtx.inbuflen + nsmplread),
+                        rCtx.nch * (rCtx.inbuflen + toberead),
+                        0.0
+                    )
+                    toberead = nsmplread
+                }
+
+                rCtx.inBuffer!!.flip()
+                fillInBuf(rCtx, toberead)
+                rCtx.inBuffer!!.clear()
+
+                rCtx.inbuflen += toberead
+
+                rCtx.sumread += toberead.toLong()
+
+                nsmplwrt1 = rCtx.nb2
+
+                rCtx.ip = ((rCtx.sfrq * (rCtx.rp - 1) + rCtx.fs1) / rCtx.fs1) * rCtx.nch
+
+                nsmplwrt2 = upSample(rCtx, nsmplwrt1)
+
+                rCtx.rp += nsmplwrt1 * rCtx.sfrqfrqgcd / rCtx.osf
+
+                rCtx.outBuffer!!.clear()
+                fillOutBuf(rCtx, dbps, gain, nsmplwrt2)
+                rCtx.outBuffer!!.flip()
+
+                writeLen = writeOutBytes(rCtx, nsmplwrt2, dbps, outBytesWritten, isLast)
+                if (writeLen < 0) {
+                    break
+                }
+                outBytesWritten += writeLen
+
+                rCtx.sumwrite += (writeLen / rCtx.wbpf).toLong()
+
+                rCtx.ds = (rCtx.rp - 1) / rCtx.fs1sfrq
+
+                if (rCtx.inbuflen > rCtx.ds) System.arraycopy(
+                    rCtx.inbuf,
+                    rCtx.nch * rCtx.ds,
+                    rCtx.inbuf,
+                    0,
+                    rCtx.nch * (rCtx.inbuflen - rCtx.ds)
+                )
+
+                rCtx.inbuflen -= rCtx.ds
+                rCtx.rp -= rCtx.ds * rCtx.fs1sfrq
+            }
+            return outBytesWritten
+        }
+
+        private fun downsample(
+            rCtx: ResampleContext,
+            samples: ByteArray,
+            offset: Int,
+            length: Int,
+            gain: Double,
+            isLast: Boolean
+        ): Int {
+            var nsmplread: Int
+            var nsmplwrt: Int
+            var writeLen: Int
+            val dbps = if (rCtx.twopass) 8 else if (rCtx.dstFloat) 4 else rCtx.dbps
+            var toberead = ((rCtx.nb2 - rCtx.rps - 1) / rCtx.osf + 1)
+
+            if (rCtx.inBuffer!!.position() + length < toberead * rCtx.bpf && !isLast) {
+                rCtx.inBuffer!!.put(samples, offset, length)
+                return 0
+            }
+
+            if (length == 0 && rCtx.inBuffer!!.hasRemaining() && isLast) {
+                nsmplread = rCtx.inBuffer!!.position() / (rCtx.bpf)
+                rCtx.inBuffer!!.flip()
+                fillInBuf(rCtx, nsmplread)
+                Arrays.fill(rCtx.inbuf, nsmplread * rCtx.nch, toberead * rCtx.nch, 0.0)
+                rCtx.inBuffer!!.clear()
+                rCtx.sumread += nsmplread.toLong()
+                nsmplwrt = downSample(rCtx)
+                rCtx.rp += nsmplwrt * (rCtx.fs2 / rCtx.dfrq)
+                rCtx.outBuffer!!.clear()
+                fillOutBuf(rCtx, dbps, gain, nsmplwrt)
+                rCtx.outBuffer!!.flip()
+                return writeOutBytes(rCtx, nsmplwrt, dbps, 0, true)
+            }
+
+            var outBytesWritten = 0
+            var lenUsed = 0
+
+            while (lenUsed < length) {
+                toberead = ((rCtx.nb2 - rCtx.rps - 1) / rCtx.osf + 1)
+                nsmplread = toberead * rCtx.bpf - rCtx.inBuffer!!.position()
+                if (nsmplread > length - lenUsed) {
+                    nsmplread = length - lenUsed
+                }
+                rCtx.inBuffer!!.put(samples, offset + lenUsed, nsmplread)
+                lenUsed += nsmplread
+
+                if (rCtx.inBuffer!!.position() < toberead * rCtx.bpf) {
+                    if (!isLast) return outBytesWritten
+                    nsmplread = rCtx.inBuffer!!.position() / rCtx.bpf
+                    Arrays.fill(
+                        rCtx.inbuf,
+                        rCtx.nch * (rCtx.inbuflen + nsmplread),
+                        rCtx.nch * (rCtx.inbuflen + toberead),
+                        0.0
+                    )
+                    toberead = nsmplread
+                }
+
+                rCtx.inBuffer!!.flip()
+                fillInBuf(rCtx, toberead)
+                rCtx.inBuffer!!.clear()
+
+                rCtx.sumread += toberead.toLong()
+
+                nsmplwrt = downSample(rCtx)
+                rCtx.rp += nsmplwrt * rCtx.fs2dfrq
+
+                rCtx.outBuffer!!.clear()
+                fillOutBuf(rCtx, dbps, gain, nsmplwrt)
+                rCtx.outBuffer!!.flip()
+
+                writeLen = writeOutBytes(rCtx, nsmplwrt, dbps, outBytesWritten, isLast)
+                if (writeLen < 0) {
+                    break
+                }
+                outBytesWritten += writeLen
+
+                rCtx.sumwrite += (writeLen / rCtx.wbpf).toLong()
+
+                rCtx.ds = (rCtx.rp - 1) / rCtx.fs2fs1
+
+                if (rCtx.ds > rCtx.nb2) {
+                    rCtx.ds = rCtx.nb2
+                }
+                var ch = 0
+                while (ch < rCtx.nch) {
+                    System.arraycopy(rCtx.buf2[ch], rCtx.ds, rCtx.buf2[ch], 0, rCtx.nx + 1 + rCtx.nb2 - rCtx.ds)
+                    ch++
+                }
+
+                rCtx.rp -= rCtx.ds * rCtx.fs2fs1
+
+                ch = 0
+                while (ch < rCtx.nch) {
+                    System.arraycopy(rCtx.buf1[ch], rCtx.nb2, rCtx.buf2[ch], rCtx.nx + 1, rCtx.nb2)
+                    ch++
+                }
+            }
+            return outBytesWritten
+        }
+
+        private fun no_src(rCtx: ResampleContext, samples: ByteArray, offset: Int, length: Int, gain: Double): Int {
+            var i: Int
+            var ch: Int
+            var f: Double
+            var p: Double
+            var len = length
+
+            if (len >= rCtx.inBuffer!!.remaining()) {
+                len = rCtx.inBuffer!!.remaining()
+            }
+
+            if (rCtx.inBuffer!!.position() + len < rCtx.bps * rCtx.nch) {
+                rCtx.inBuffer!!.put(samples, offset, len)
+                return 0
+            }
+
+            var outBytesWritten = 0
+            var lenUsed = 0
+
+            var j = 0
+            if (rCtx.nch == 1 && rCtx.rnch != rCtx.nch) {
+                j = rCtx.mono
+            }
+
+            while (lenUsed < length) {
+                len = rCtx.inBuffer!!.remaining()
+                if (len > length - lenUsed) {
+                    len = length - lenUsed
+                }
+
+                rCtx.inBuffer!!.put(samples, offset + lenUsed, len)
+
+                if (rCtx.inBuffer!!.position() < rCtx.bps * rCtx.nch) {
+                    break
+                }
+
+                rCtx.inBuffer!!.flip()
+                rCtx.outBuffer!!.clear()
+
+                lenUsed += len
+
+                if (rCtx.twopass) {
+                    i = 0
+                    while (i < rCtx.inBuffer!!.limit() - rCtx.bps * rCtx.rnch) {
+                        ch = 0
+                        while (ch < rCtx.nch) {
+                            f = readFromInBuffer(rCtx, i + (ch + j) * rCtx.bps) * gain
+                            p = if (f > 0) f else -f
+                            rCtx.peak = if (rCtx.peak < p) p else rCtx.peak
+                            rCtx.outBuffer!!.putDouble(f)
+                            ch++
+                        }
+                        i += rCtx.bps * rCtx.rnch
+                    }
+                } else {
+                    i = 0
+                    while (i < rCtx.inBuffer!!.limit() - rCtx.bps * rCtx.rnch) {
+                        ch = 0
+                        while (ch < rCtx.dnch) {
+                            f = readFromInBuffer(rCtx, i + ((ch % rCtx.nch) + j) * rCtx.bps) * gain
+                            writeToOutBuffer(rCtx, f, (ch % rCtx.nch))
+                            ch++
+                        }
+                        i += rCtx.bps * rCtx.rnch
+                    }
+                }
+                rCtx.inBuffer!!.position(i)
+                rCtx.inBuffer!!.compact()
+                rCtx.outBuffer!!.flip()
+                if (rCtx.outBytes!!.size - outBytesWritten < rCtx.outBuffer!!.limit()) {
+                    val tmpBytes = ByteArray(outBytesWritten + rCtx.outBuffer!!.limit())
+                    System.arraycopy(rCtx.outBytes!!, 0, tmpBytes, 0, outBytesWritten)
+                    rCtx.outBytes = tmpBytes
+                }
+                rCtx.outBuffer!![rCtx.outBytes, outBytesWritten, rCtx.outBuffer!!.limit()]
+                outBytesWritten += rCtx.outBuffer!!.limit()
+            }
+            return outBytesWritten
+        }
+
+        /* end Stream input/output */
+        private fun readFromInBuffer(rCtx: ResampleContext, i: Int): Double {
+            if (rCtx.srcFloat) {
+                return rCtx.inBuffer!!.getDouble(i)
+            } else {
+                when (rCtx.bps) {
+                    1 -> return NORMALIZE_FACTOR_8 * ((rCtx.inBuffer!![i].toShort().toInt() and 0xff) - 128).toDouble()
+                    2 -> return NORMALIZE_FACTOR_16 * rCtx.inBuffer!!.getShort(i)
+                    3 -> return if (rCtx.srcByteOrder == ByteOrder.LITTLE_ENDIAN) {
+                        NORMALIZE_FACTOR_24 * ((rCtx.inBuffer!!.getShort(i)
+                            .toInt() and 0xffff) or ((rCtx.inBuffer!![i + 2].toInt() shl 24) shr 8)).toDouble()
+                    } else {
+                        NORMALIZE_FACTOR_24 * (((rCtx.inBuffer!![i].toInt() shl 24) shr 8) or (rCtx.inBuffer!!.getShort(
+                            i + 1
+                        ).toInt() and 0xffff)).toDouble()
+                    }
+
+                    4 -> return NORMALIZE_FACTOR_32 * rCtx.inBuffer!!.getInt(i).toDouble()
+                }
+            }
+            return 0.0
+        }
+
+        private fun intSampleToDouble(rCtx: ResampleContext, sample: Int): Double {
+            when (rCtx.bps) {
+                1 -> return NORMALIZE_FACTOR_8 * ((sample and 0xff) - 128).toDouble()
+                2 -> return NORMALIZE_FACTOR_16 * sample
+                3 -> return NORMALIZE_FACTOR_24 * sample
+                4 -> return NORMALIZE_FACTOR_32 * sample
+            }
+            return 0.0
+        }
+
+        private fun writeToOutBuffer(rCtx: ResampleContext, f: Double, ch: Int) {
+            var f1 = f
+            var s: Int
+            if (rCtx.dstFloat) {
+                rCtx.outBuffer!!.putFloat(f1.toFloat())
+            } else {
+                when (rCtx.dbps) {
+                    1 -> {
+                        f1 *= (0x7f).toDouble()
+                        s = if (rCtx.dither > 0) do_shaping(rCtx, f1, ch) else RINT(f1)
+                        rCtx.outBuffer!!.put((s + 128).toByte())
+                    }
+
+                    2 -> {
+                        f1 *= (0x7fff).toDouble()
+                        s = if (rCtx.dither > 0) do_shaping(rCtx, f1, ch) else RINT(f1)
+                        rCtx.outBuffer!!.putShort(s.toShort())
+                    }
+
+                    3 -> {
+                        f1 *= (0x7fffff).toDouble()
+                        s = if (rCtx.dither > 0) do_shaping(rCtx, f1, ch) else RINT(f1)
+                        rCtx.outBuffer!!.putShort(s.toShort())
+                        s = s shr 16
+                        rCtx.outBuffer!!.put(s.toByte())
+                    }
+                }
+            }
+        }
+
+        private fun writeIntToBuffer(rCtx: ResampleContext, sample: Int, gain: Double) {
+            var s = (sample * gain).toInt()
+            when (rCtx.dbps) {
+                1 -> rCtx.outBuffer!!.put(s.toByte())
+                2 -> rCtx.outBuffer!!.putShort(s.toShort())
+                3 -> {
+                    rCtx.outBuffer!!.putShort(s.toShort())
+                    s = s shr 16
+                    rCtx.outBuffer!!.put(s.toByte())
+                }
+            }
+        }
+
+        fun dBToGain(att: Double): Double {
+            return 10.0.pow(att / 20)
+        }
     }
 }
