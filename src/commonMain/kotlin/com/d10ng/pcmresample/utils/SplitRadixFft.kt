@@ -7,6 +7,7 @@
  */
 package com.d10ng.pcmresample.utils
 
+import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -692,7 +693,7 @@ class SplitRadixFft {
         if (nw > 2) {
             nwh = nw shr 1
             //          delta = Math.atan(1.0) / nwh;
-            delta = Math.PI / 4 / nwh
+            delta = PI / 4 / nwh
             wn4r = cos(delta * nwh)
             w[0] = 1.0
             w[1] = wn4r
@@ -747,7 +748,7 @@ class SplitRadixFft {
         if (nc > 1) {
             nch = nc shr 1
             //          delta = Math.atan(1.0) / nch;
-            delta = Math.PI / 4 / nch
+            delta = PI / 4 / nch
             c[cP + 0] = cos(delta * nch)
             c[cP + nch] = 0.5 * c[cP + 0]
             j = 1

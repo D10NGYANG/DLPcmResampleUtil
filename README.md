@@ -1,5 +1,5 @@
 # DLPcmResampleUtil
-PCM文件调整采样率，Java库
+PCM文件调整采样率，kotlin multiplatform库，目前支持`Android`、`JVM`、`IOS`、`MacOS`、`JS`、`Linux`；
 
 ## 参考
 - [hutm/JSSRC](https://github.com/hutm/JSSRC)
@@ -7,7 +7,7 @@ PCM文件调整采样率，Java库
 - [ideastudios/AndroidPcmResample](https://github.com/ideastudios/AndroidPcmResample)
 
 ## 版本
-version = `0.1.1`
+version = `0.2.0`
 
 ## 使用说明
 ### 1、添加仓库
@@ -16,7 +16,11 @@ maven { url 'https://raw.githubusercontent.com/D10NGYANG/maven-repo/main/reposit
 ```
 ### 2、添加依赖
 ```gradle
-implementation 'com.github.D10NGYANG:DLPcmResampleUtil:$version'
+implementation("com.github.D10NGYANG:DLPcmResampleUtil:$version")
+// 通用计算工具
+implementation("com.github.D10NGYANG:DLCommonUtil:0.4.0")
+// 时间工具
+implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
 ```
 ### 3、混淆
 ```properties

@@ -1,17 +1,20 @@
 import com.d10ng.pcmresample.DLPcmResampleUtil
 import com.d10ng.pcmresample.constant.ChannelType
 import com.d10ng.pcmresample.constant.EncodingType
+import com.d10ng.pcmresample.resample
 import org.junit.Test
 import java.io.File
 
 class Test {
+
+    private val basePath = "src/jvmTest/resources"
 
     /**
      * 测试文件重采样
      */
     @Test
     fun testFile() {
-        val srcPath = javaClass.classLoader.getResource("ori48.pcm")!!.path
+        val srcPath = "${basePath}/ori48.pcm"
         val targetPath = "./48to8.pcm"
         val srcSampleRate = 48000
         val targetSampleRate = 8000
@@ -21,7 +24,7 @@ class Test {
         // 读取目标文件数据
         val targetData = File(targetPath).readBytes()
         // 获取resource目录下的目标文件数据
-        val oriData = javaClass.classLoader.getResource("48to8.pcm")!!.readBytes()
+        val oriData = File("${basePath}/48to8.pcm").readBytes()
         assert(targetData.contentEquals(oriData))
         // 删除目标文件
         File(targetPath).delete()
@@ -32,7 +35,7 @@ class Test {
      */
     @Test
     fun testByteArray() {
-        val srcData = javaClass.classLoader.getResource("ori48.pcm")!!.readBytes()
+        val srcData = File("${basePath}/ori48.pcm").readBytes()
         val srcSampleRate = 48000
         val targetSampleRate = 8000
         val channelType = ChannelType.MONO
@@ -41,7 +44,7 @@ class Test {
         // 写入文件
         //File("./48to8.pcm").writeBytes(targetData)
         // 获取resource目录下的目标文件数据
-        val oriData = javaClass.classLoader.getResource("48to8.pcm")!!.readBytes()
+        val oriData = File("${basePath}/48to8.pcm").readBytes()
         assert(targetData.contentEquals(oriData))
     }
 
@@ -50,7 +53,7 @@ class Test {
      */
     @Test
     fun testByteArrayLoop() {
-        val srcData = javaClass.classLoader.getResource("ori48.pcm")!!.readBytes()
+        val srcData = File("${basePath}/ori48.pcm").readBytes()
         val srcSampleRate = 48000
         val targetSampleRate = 8000
         val channelType = ChannelType.MONO

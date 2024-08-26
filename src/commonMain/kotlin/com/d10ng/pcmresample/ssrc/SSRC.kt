@@ -13,15 +13,16 @@
  */
 package com.d10ng.pcmresample.ssrc
 
+import com.d10ng.common.base.ByteBuffer
+import com.d10ng.common.base.ByteOrder
 import com.d10ng.pcmresample.ssrc.fft.FFT
 import com.d10ng.pcmresample.ssrc.fft.VaviSoundFFT
 import com.d10ng.pcmresample.utils.I0Bessel.value
-import com.d10ng.pcmresample.utils.ByteBuffer
-import com.d10ng.pcmresample.utils.ByteOrder
+import kotlinx.datetime.Clock
 import kotlin.math.*
 import kotlin.random.Random
 
-class JavaSSRC {
+class SSRC {
 
     interface ProgressListener {
         fun onShowMessage(message: String?)
@@ -247,12 +248,7 @@ class JavaSSRC {
             i++
         }
         if ((rCtx!!.dither == 3 || rCtx!!.dither == 4) && i == 6) {
-            showMessage(
-                String.format(
-                    "Warning: ATH based noise shaping for destination frequency %dHz is not available, using triangular dither",
-                    rCtx!!.dfrq
-                )
-            )
+            showMessage("Warning: ATH based noise shaping for destination frequency ${rCtx!!.dfrq}Hz is not available, using triangular dither")
         }
         if (rCtx!!.dither == 2 || i == 6) {
             i = 0
@@ -284,7 +280,7 @@ class JavaSSRC {
         }
 
         rCtx!!.randbuf = DoubleArray(RANDBUFLEN)
-        val random = Random(System.nanoTime())
+        val random = Random(Clock.System.now().epochSeconds)
 
         i = 0
         while (i < POOLSIZE) {
@@ -347,7 +343,7 @@ class JavaSSRC {
                         r = (pool[p].toDouble()) / Int.MAX_VALUE
                         pool[p] = random.nextInt(Int.MAX_VALUE)
 
-                        u = 2 * Math.PI * r
+                        u = 2 * PI * r
 
                         rCtx!!.randbuf[i] = rCtx!!.noiseamp * t * cos(u)
                     } else {
@@ -514,13 +510,10 @@ class JavaSSRC {
                 rCtx.osf = 3
             } else {
                 throw UnsupportedOperationException(
-                    String.format(
-                        """
-                        Resampling from %dHz to %dHz is not supported.
-                        %d/gcd(%d,%d)=%d must be divisible by 2 or 3.
-                        """.trimIndent(),
-                        rCtx.sfrq, rCtx.dfrq, rCtx.sfrq, rCtx.sfrq, rCtx.dfrq, rCtx.fs1 / rCtx.dfrq
-                    )
+                    """
+                        Resampling from ${rCtx.sfrq}Hz to ${rCtx.dfrq}Hz is not supported.
+                        ${rCtx.sfrq}/gcd(${rCtx.sfrq},${rCtx.dfrq})=${rCtx.fs1 / rCtx.dfrq} must be divisible by 2 or 3.
+                        """.trimIndent()
                 )
             }
 
@@ -671,13 +664,10 @@ class JavaSSRC {
                 rCtx.osf = 3
             } else {
                 throw UnsupportedOperationException(
-                    String.format(
-                        """
-                        Resampling from %dHz to %dHz is not supported.
-                        %d/gcd(%d,%d)=%d must be divisible by 2 or 3.
-                        """.trimIndent(),
-                        rCtx.sfrq, rCtx.dfrq, rCtx.dfrq, rCtx.sfrq, rCtx.dfrq, rCtx.dfrq / rCtx.frqgcd
-                    )
+                    """
+                    Resampling from ${rCtx.sfrq}Hz to ${rCtx.dfrq}Hz is not supported.
+                    ${rCtx.dfrq}/gcd(${rCtx.sfrq},${rCtx.dfrq})=${rCtx.dfrq / rCtx.frqgcd} must be divisible by 2 or 3.
+                    """.trimIndent()
                 )
             }
 
@@ -909,7 +899,7 @@ class JavaSSRC {
 
         private fun hn_lpf(n: Int, lpf: Double, fs: Double): Double {
             val t = 1 / fs
-            val omega = 2 * Math.PI * lpf
+            val omega = 2 * PI * lpf
             return 2 * lpf * t * sinc(n * omega * t)
         }
 
@@ -1219,7 +1209,7 @@ class JavaSSRC {
                 }
                 if (rCtx.outBytes!!.size - offset < rCtx.outBuffer!!.limit()) {
                     val tmpBytes = ByteArray(offset + rCtx.outBuffer!!.limit())
-                    System.arraycopy(rCtx.outBytes!!, 0, tmpBytes, 0, offset)
+                    rCtx.outBytes?.copyInto(tmpBytes, 0, 0, offset)
                     rCtx.outBytes = tmpBytes
                 }
                 rCtx.outBuffer!!.position(writeOffset)
@@ -1556,12 +1546,11 @@ class JavaSSRC {
 
                 rCtx.ds = (rCtx.rp - 1) / rCtx.fs1sfrq
 
-                if (rCtx.inbuflen > rCtx.ds) System.arraycopy(
+                if (rCtx.inbuflen > rCtx.ds) rCtx.inbuf.copyInto(
                     rCtx.inbuf,
-                    rCtx.nch * rCtx.ds,
-                    rCtx.inbuf,
-                    0,
-                    rCtx.nch * (rCtx.inbuflen - rCtx.ds)
+                    destinationOffset = 0,
+                    startIndex = rCtx.nch * rCtx.ds,
+                    endIndex = rCtx.nch * (rCtx.inbuflen - rCtx.ds) + rCtx.nch * rCtx.ds
                 )
 
                 rCtx.inbuflen -= rCtx.ds
@@ -1655,7 +1644,12 @@ class JavaSSRC {
                 }
                 var ch = 0
                 while (ch < rCtx.nch) {
-                    System.arraycopy(rCtx.buf2[ch], rCtx.ds, rCtx.buf2[ch], 0, rCtx.nx + 1 + rCtx.nb2 - rCtx.ds)
+                    rCtx.buf2[ch].copyInto(
+                        rCtx.buf2[ch],
+                        destinationOffset = 0,
+                        startIndex = rCtx.ds,
+                        endIndex = rCtx.nx + 1 + rCtx.nb2
+                    )
                     ch++
                 }
 
@@ -1663,7 +1657,12 @@ class JavaSSRC {
 
                 ch = 0
                 while (ch < rCtx.nch) {
-                    System.arraycopy(rCtx.buf1[ch], rCtx.nb2, rCtx.buf2[ch], rCtx.nx + 1, rCtx.nb2)
+                    rCtx.buf1[ch].copyInto(
+                        rCtx.buf2[ch],
+                        destinationOffset = rCtx.nx + 1,
+                        startIndex = rCtx.nb2,
+                        endIndex = rCtx.nb2 + rCtx.nb2
+                    )
                     ch++
                 }
             }
@@ -1741,7 +1740,12 @@ class JavaSSRC {
                 rCtx.outBuffer!!.flip()
                 if (rCtx.outBytes!!.size - outBytesWritten < rCtx.outBuffer!!.limit()) {
                     val tmpBytes = ByteArray(outBytesWritten + rCtx.outBuffer!!.limit())
-                    System.arraycopy(rCtx.outBytes!!, 0, tmpBytes, 0, outBytesWritten)
+                    rCtx.outBytes?.copyInto(
+                        tmpBytes,
+                        destinationOffset = 0,
+                        startIndex = 0,
+                        endIndex = outBytesWritten
+                    ) ?: throw NullPointerException("rCtx.outBytes is null")
                     rCtx.outBytes = tmpBytes
                 }
                 rCtx.outBuffer!![rCtx.outBytes!!, outBytesWritten, rCtx.outBuffer!!.limit()]
