@@ -7,7 +7,7 @@ PCM文件调整采样率，kotlin multiplatform库，目前支持`Android`、`JV
 - [ideastudios/AndroidPcmResample](https://github.com/ideastudios/AndroidPcmResample)
 
 ## 版本
-version = `0.2.1`
+version = `0.2.2`
 
 ## 使用说明
 ### 1、添加仓库
@@ -18,7 +18,7 @@ maven { url 'https://raw.githubusercontent.com/D10NGYANG/maven-repo/main/reposit
 ```gradle
 implementation("com.github.D10NGYANG:DLPcmResampleUtil:$version")
 // 通用计算工具
-implementation("com.github.D10NGYANG:DLCommonUtil:0.4.1")
+implementation("com.github.D10NGYANG:DLCommonUtil:0.5.0")
 // 时间工具
 implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
 ```
