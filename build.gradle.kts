@@ -13,7 +13,7 @@ plugins {
 
 
 group = "com.github.D10NGYANG"
-version = "0.2.3"
+version = "0.2.4"
 
 repositories {
     google()
@@ -55,7 +55,7 @@ kotlin {
         commonMain {
             dependencies {
                 // 通用计算工具
-                implementation("com.github.D10NGYANG:DLCommonUtil:0.5.1")
+                implementation("com.github.D10NGYANG:DLCommonUtil:0.5.2")
                 // 时间工具
                 implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
             }
