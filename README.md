@@ -70,7 +70,7 @@ fun resample(
 ): ByteArray
 ```
 ### 5、示例
-> 参考 `Test` 文件：[Test.kt](src/test/java/Test.kt)；
+> 参考 `Test` 文件：[Test.kt](src/jvmTest/kotlin/Test.kt)；
 
 ## 后续计划
 > 暂无
