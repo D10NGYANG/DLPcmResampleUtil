@@ -3,12 +3,12 @@ val bds100MavenPassword: String by project
 val npmJsToken: String by project
 
 plugins {
-    kotlin("multiplatform") version "2.0.20"
-    kotlin("plugin.serialization") version "2.0.20"
+    kotlin("multiplatform") version "2.1.20"
+    kotlin("plugin.serialization") version "2.1.20"
     id("com.android.library")
     id("maven-publish")
-    id("dev.petuska.npm.publish") version "3.4.3"
-    id("com.github.ben-manes.versions") version "0.51.0"
+    id("dev.petuska.npm.publish") version "3.5.3"
+    id("com.github.ben-manes.versions") version "0.52.0"
 }
 
 
@@ -33,7 +33,7 @@ kotlin {
         }
     }
     js(IR) {
-        moduleName = "dl-pcmresample-util"
+        outputModuleName = "dl-pcmresample-util"
         binaries.library()
         binaries.executable()
         nodejs()
@@ -55,9 +55,9 @@ kotlin {
         commonMain {
             dependencies {
                 // 通用计算工具
-                implementation("com.github.D10NGYANG:DLCommonUtil:0.5.2")
+                implementation("com.github.D10NGYANG:DLCommonUtil:0.6.1")
                 // 时间工具
-                implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
+                implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.2")
             }
         }
         commonTest {
